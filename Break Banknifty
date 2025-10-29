@@ -61,6 +61,23 @@ show_bb_lines = input.bool(false, title="Show Bollinger Bands", group="Bollinger
 show_bb_signals = input.bool(true, title="Show BB Entry Signals", group="Bollinger Band Strategy")
 show_bb_tp_sl_labels = input.bool(true, title="Show BB TP/SL Hit Labels", group="Bollinger Band Strategy")
 
+
+
+
+// ═════════════════════════════════════════════════════════════════
+// NORMAL CANDLE DATA FOR PNL CALCULATION - FOR BREAKOUT STRATEGY
+// ═════════════════════════════════════════════════════════════════
+
+// Get the real ticker symbol (non-Heikin Ashi) using the correct method
+base_ticker = ticker.new(syminfo.prefix, syminfo.ticker, session=session.regular)
+
+// Fetch normal (real) OHLC data for accurate P&L
+normal_close = request.security(base_ticker, timeframe.period, close, lookahead=barmerge.lookahead_off)
+normal_high = request.security(base_ticker, timeframe.period, high, lookahead=barmerge.lookahead_off) 
+normal_low = request.security(base_ticker, timeframe.period, low, lookahead=barmerge.lookahead_off)
+normal_open = request.security(base_ticker, timeframe.period, open, lookahead=barmerge.lookahead_off)
+
+
 // ═══════════════════════════════════════════════════════════════════════════════════
 // BREAKOUT STRATEGY INPUTS
 // ═══════════════════════════════════════════════════════════════════════════════════
@@ -469,8 +486,8 @@ var float breakout_entry_candle_low = na
 
 hgst_value = ta.highest(prd)[1]
 
-if array.size(phval) >= mintest and close > open and enable_breakout_strategy and not isEntryBlocked()
-    if close > hgst_value
+if array.size(phval) >= mintest and normal_close > normal_open and enable_breakout_strategy and not isEntryBlocked()
+    if normal_close > hgst_value
         bomax = array.get(phval, 0)
         xx = 0
         for x = 0 to array.size(phval) - 1
@@ -484,18 +501,18 @@ if array.size(phval) >= mintest and close > open and enable_breakout_strategy an
                 if array.get(phval, x) <= bomax and array.get(phval, x) >= bomax - chwidth
                     num += 1
             if num >= mintest and hgst_value < bomax
-                points_above_zone = close - bomax
+                points_above_zone = normal_close - bomax
                 if points_above_zone >= min_points_above_zone
                     bullish_breakout_base := true
-                    breakout_entry_candle_low := low
+                    breakout_entry_candle_low := normal_low  // Store normal candle low
 
 bearish_breakdown_base = false
 var float breakout_entry_candle_high = na
 
 lwst_value = ta.lowest(prd)[1]
 
-if array.size(plval) >= mintest and close < open and enable_breakout_strategy and not isEntryBlocked()
-    if close < lwst_value
+if array.size(plval) >= mintest and normal_close < normal_open and enable_breakout_strategy and not isEntryBlocked()
+    if normal_close < lwst_value
         bomin = array.get(plval, 0)
         xx = 0
         for x = 0 to array.size(plval) - 1
@@ -509,11 +526,10 @@ if array.size(plval) >= mintest and close < open and enable_breakout_strategy an
                 if array.get(plval, x) >= bomin and array.get(plval, x) <= bomin + chwidth
                     num1 += 1
             if num1 >= mintest and lwst_value > bomin
-                points_below_zone = bomin - close
+                points_below_zone = bomin - normal_close
                 if points_below_zone >= min_points_below_zone
                     bearish_breakdown_base := true
-                    breakout_entry_candle_high := high
-
+                    breakout_entry_candle_high := normal_high  // Store normal candle high
 // Breakout Trade Management Variables
 var bool breakout_in_trade = false
 var string breakout_trade_type = ""
@@ -849,11 +865,10 @@ if bb_buy_entry and not bb_in_trade
 if bb_waiting_for_entry and bar_index > bb_alert_bar_index + 5
     bb_waiting_for_entry := false
 
-// Breakout Entry Logic
 if bullish_breakout and not breakout_in_trade
     breakout_in_trade := true
     breakout_trade_type := "BUY"
-    breakout_entry_price := close
+    breakout_entry_price := normal_close  // Use normal candle for entry
     breakout_entry_bar_index := bar_index
     
     if breakout_sl_type == "Fixed Points"
@@ -861,12 +876,12 @@ if bullish_breakout and not breakout_in_trade
     else if breakout_sl_type == "ATR Trailing"
         breakout_stop_loss := TS
     else if breakout_sl_type == "Entry Candle Low"
-        breakout_stop_loss := breakout_entry_candle_low - entry_candle_buffer
+        breakout_stop_loss := normal_low - entry_candle_buffer  // Use normal candle low
     
 if bearish_breakdown and not breakout_in_trade
     breakout_in_trade := true
     breakout_trade_type := "SELL"
-    breakout_entry_price := close
+    breakout_entry_price := normal_close  // Use normal candle for entry
     breakout_entry_bar_index := bar_index
     
     if breakout_sl_type == "Fixed Points"
@@ -874,7 +889,7 @@ if bearish_breakdown and not breakout_in_trade
     else if breakout_sl_type == "ATR Trailing"
         breakout_stop_loss := TS
     else if breakout_sl_type == "Entry Candle Low"
-        breakout_stop_loss := breakout_entry_candle_high + entry_candle_buffer
+        breakout_stop_loss := normal_high + entry_candle_buffer  // Use normal candle high
 
 // Update ATR trailing SL for breakout
 if breakout_in_trade and breakout_sl_type == "ATR Trailing"
@@ -1111,7 +1126,7 @@ if breakout_in_trade and bar_index > breakout_entry_bar_index and not breakout_3
     // Regular Exit Logic
     else if breakout_sl_type == "Fixed Points" or breakout_sl_type == "Entry Candle Low"
         if breakout_trade_type == "BUY"
-            if low <= breakout_stop_loss
+            if normal_low <= breakout_stop_loss
                 breakout_sl_hit_alert := true
                 breakout_in_trade := false
                 breakout_trade_points_sl := breakout_entry_price - breakout_stop_loss
@@ -1120,7 +1135,7 @@ if breakout_in_trade and bar_index > breakout_entry_bar_index and not breakout_3
                 breakout_in_trade := false
                 breakout_trade_points_tp := close - breakout_entry_price
         else if breakout_trade_type == "SELL"
-            if high >= breakout_stop_loss
+            if normal_high >= breakout_stop_loss
                 breakout_sl_hit_alert := true
                 breakout_in_trade := false
                 breakout_trade_points_sl := breakout_stop_loss - breakout_entry_price
