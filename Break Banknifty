@@ -1,0 +1,2086 @@
+//@version=5
+// Created by digitaljobnews-hash & eatapple990-cmyk
+// TBH Pure Supertrend Trailing Logic - Performance Table Fixed + VWAP Strategy
+// Current Date and Time (UTC): 2025-01-09 04:25:31
+// Current User: eatapple990-cmyk
+indicator('Banknifty', overlay=true, max_bars_back=501, max_lines_count=400)
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// STRATEGY ENABLE/DISABLE TOGGLES
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+enable_bb_strategy = input.bool(false, title="✅ Enable Bollinger Band Reversal Strategy", group="Strategy Toggles")
+enable_breakout_strategy = input.bool(false, title="✅ Enable Breakout Strategy", group="Strategy Toggles")
+enable_tbh_strategy = input.bool(true, title="✅ Enable Top Bottom Hunter Strategy", group="Strategy Toggles")
+enable_vwap_strategy = input.bool(false, title="✅ Enable VWAP Crossover Strategy", group="Strategy Toggles")
+
+// TIME SLOT EXCLUSION SETTINGS
+enable_time_exclusion = input.bool(false, title="🚫 Enable Time Slot Exclusion", tooltip="Blocks trades during poor performance time slots", group="Strategy Toggles")
+
+// ENHANCED OVERLAP FILTER
+enable_overlap_filter = input.bool(true, title="✅ Enable Signal Overlap Filter", tooltip="Prevents multiple strategy signals when any strategy has active trade", group="Strategy Toggles")
+enable_315_exit = input.bool(true, title="✅ Enable 3:15 PM Auto Exit", tooltip="Closes all active trades at 3:15 PM and blocks new entries after 3:15 PM", group="Strategy Toggles")
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// BOLLINGER BAND REVERSAL STRATEGY INPUTS - IMPROVED SL LOGIC
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+// Bollinger Band Settings
+bb_length = input.int(20, title="BB Length", minval=1, group="Bollinger Band Strategy")
+bb_std_dev = input.float(1.7, title="BB Standard Deviation", minval=0.1, step=0.1, group="Bollinger Band Strategy")
+
+// Band Stretch Settings
+enable_stretch_filter = input.bool(true, title="✅ Enable Band Stretch Filter", group="Bollinger Band Strategy")
+min_band_width = input.float(50.0, title="Minimum Band Width (Points)", minval=10.0, maxval=200.0, group="Bollinger Band Strategy")
+
+// Trading Settings
+tp_points = input.float(50.0, title="Take Profit Points", minval=10.0, maxval=200.0, group="Bollinger Band Strategy")
+
+// IMPROVED STOP LOSS SETTINGS
+bb_sl_type = input.string("Smart SL (Min Risk)", title="Stop Loss Type", options=["Smart SL (Min Risk)", "Candle Based", "Fixed Points"], group="Bollinger Band Strategy")
+bb_fixed_sl_points = input.float(30.0, title="Max SL Points (Smart/Fixed)", minval=5.0, maxval=100.0, step=1.0, group="Bollinger Band Strategy", tooltip="For Smart SL: Maximum risk in points. For Fixed SL: Exact risk in points.")
+bb_sl_buffer = input.float(2.0, title="Alert Candle SL Buffer", minval=0.0, maxval=10.0, step=0.5, group="Bollinger Band Strategy", tooltip="Extra buffer points added to alert candle high/low")
+bb_enable_alerts = input.bool(true, title="Enable BB Alerts", group="Bollinger Band Strategy")
+
+// BB Time Exclusion Settings - 12 slots
+bb_exclude_0915_0930 = input.bool(true, title="Exclude 9:15-9:30", group="Bollinger Band Strategy")
+bb_exclude_0930_0945 = input.bool(true, title="Exclude 9:30-9:45", group="Bollinger Band Strategy")
+bb_exclude_1015_1030 = input.bool(true, title="Exclude 10:15-10:30", group="Bollinger Band Strategy")
+bb_exclude_1115_1145 = input.bool(true, title="Exclude 11:15-11:45", group="Bollinger Band Strategy")
+bb_exclude_1200_1215 = input.bool(true, title="Exclude 12:00-12:15", group="Bollinger Band Strategy")
+bb_exclude_1245_1300 = input.bool(true, title="Exclude 12:45-13:00", group="Bollinger Band Strategy")
+bb_exclude_1300_1315 = input.bool(true, title="Exclude 13:00-13:15", group="Bollinger Band Strategy")
+bb_exclude_1315_1330 = input.bool(true, title="Exclude 13:15-13:30", group="Bollinger Band Strategy")
+bb_exclude_1330_1345 = input.bool(true, title="Exclude 13:30-13:45", group="Bollinger Band Strategy")
+bb_exclude_1415_1430 = input.bool(true, title="Exclude 14:15-14:30", group="Bollinger Band Strategy")
+bb_exclude_1430_1445 = input.bool(true, title="Exclude 14:30-14:45", group="Bollinger Band Strategy")
+bb_exclude_1500_1515 = input.bool(true, title="Exclude 15:00-15:15", group="Bollinger Band Strategy") 
+
+// Display Settings - DEFAULT OFF FOR CLEAN VISUALS
+show_bb_lines = input.bool(false, title="Show Bollinger Bands", group="Bollinger Band Strategy")
+show_bb_signals = input.bool(true, title="Show BB Entry Signals", group="Bollinger Band Strategy")
+show_bb_tp_sl_labels = input.bool(true, title="Show BB TP/SL Hit Labels", group="Bollinger Band Strategy")
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// BREAKOUT STRATEGY INPUTS
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+prd = input.int(7, title="Pivot Period", minval=2, group="Breakout Strategy")
+bo_len = input.int(200, title="Max Breakout Length", minval=0, maxval=3000, group="Breakout Strategy")
+cwidthu = input.float(6.0, title="Threshold Rate %", minval=1.0, maxval=100.0, group="Breakout Strategy") / 100
+mintest = input.int(2, title="Minimum Number of Tests", minval=1, group="Breakout Strategy")
+min_points_above_zone = input.float(2.5, title="Min Points Above Zone for BUY", minval=0.5, maxval=20.0, step=0.5, group="Breakout Strategy")
+min_points_below_zone = input.float(2.5, title="Min Points Below Zone for SELL", minval=0.5, maxval=20.0, step=0.5, group="Breakout Strategy")
+
+Atr = input.int(defval=5, title='ATR Period', minval=1, maxval=500, group="Breakout Strategy")
+Hhv = input.int(defval=10, title='HHV Period', minval=1, maxval=500, group="Breakout Strategy")
+Mult = input.float(defval=2.5, title='ATR Multiplier', minval=0.1, step=0.1, group="Breakout Strategy")
+
+// STOP LOSS SETTINGS
+breakout_sl_type = input.string("Entry Candle Low", title="Stop Loss Type", options=["Fixed Points", "ATR Trailing", "Entry Candle Low"], group="Breakout Strategy")
+breakout_fixed_sl_points = input.float(31.0, title="Fixed SL Points", group="Breakout Strategy")
+entry_candle_buffer = input.float(5.0, title="Entry Candle SL Buffer (Points)", minval=0.0, maxval=50.0, group="Breakout Strategy")
+auto_tp_time = input.bool(true, title="Auto TP at 3:15 PM", group="Breakout Strategy")
+
+breakout_enable_alerts = input.bool(true, title="Enable Breakout Alerts", group="Breakout Strategy")
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// TOP BOTTOM HUNTER STRATEGY - PURE SUPERTREND TRAILING (NO FIXED TP)
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+// Fibonacci Settings
+tbh_fib_0 = input.float(0.382, "Fib Level 0", group="Top Bottom Hunter Strategy")
+tbh_fib_1 = input.float(0.618, "Fib Level 1", group="Top Bottom Hunter Strategy")
+tbh_swing_len = input.int(20, "Swing Lookback", minval=1, group="Top Bottom Hunter Strategy")
+
+// RSI Settings
+tbh_rsi_length = input.int(14, "RSI Length", group="Top Bottom Hunter Strategy")
+tbh_rsi_overbought = input.int(70, "RSI Overbought Level", group="Top Bottom Hunter Strategy")
+tbh_rsi_oversold = input.int(30, "RSI Oversold Level", group="Top Bottom Hunter Strategy")
+
+// Volume Settings
+tbh_volume_enabled = input.bool(true, title="Enable Volume Confirmation", group="Top Bottom Hunter Strategy")
+tbh_volume_ma_length = input.int(20, title="Volume MA Length", minval=5, maxval=50, group="Top Bottom Hunter Strategy")
+tbh_volume_multiplier = input.float(1.2, title="Volume Multiplier (Above MA)", minval=1.0, maxval=3.0, step=0.1, group="Top Bottom Hunter Strategy")
+
+// SUPERTREND SETTINGS FOR TBH - MATCHING REFERENCE SCRIPT
+tbh_supertrend_atr_length = input.int(1, title="Supertrend ATR Length", minval=1, group="Top Bottom Hunter Strategy")
+tbh_supertrend_multiplier = input.float(2.0, title="Supertrend Multiplier", minval=0.1, step=0.1, group="Top Bottom Hunter Strategy")
+
+// INITIAL STOP LOSS SETTINGS (Before Supertrend Takes Over)
+tbh_initial_sl_type = input.string("Fixed Points", title="Initial SL Type (Before Trail)", options=["Fixed Points", "Entry Candle Low"], group="Top Bottom Hunter Strategy", tooltip="Initial SL used until Supertrend crosses above this level")
+tbh_fixed_sl_points = input.float(31.0, title="Fixed SL Points", group="Top Bottom Hunter Strategy")
+tbh_entry_candle_buffer = input.float(5.0, title="Entry Candle SL Buffer (Points)", minval=0.0, maxval=50.0, group="Top Bottom Hunter Strategy")
+
+tbh_label_offset = input.float(1.0, title="Label Distance", minval=0.1, maxval=5.0, step=0.1, group="Top Bottom Hunter Strategy")
+
+// TBH Time Exclusion Settings - 4 slots
+tbh_exclude_1015_1030 = input.bool(true, title="Exclude 10:15-10:30", group="Top Bottom Hunter Strategy")
+tbh_exclude_1045_1100 = input.bool(true, title="Exclude 10:45-11:00", group="Top Bottom Hunter Strategy")
+tbh_exclude_1300_1315 = input.bool(true, title="Exclude 13:00-13:15", group="Top Bottom Hunter Strategy")
+tbh_exclude_1430_1445 = input.bool(true, title="Exclude 14:30-14:45", group="Top Bottom Hunter Strategy")
+
+// TBH Candle Color Filter
+tbh_use_candle_color = input.bool(true, title="✅ Enable Candle Color Filter", tooltip="BUY only on green candles, SELL only on red candles", group="Top Bottom Hunter Strategy")
+
+// TBH Enhanced Entry Validation
+tbh_use_enhanced_entry = input.bool(true, title="✅ Enable Enhanced Entry Validation", tooltip="Validates entry based on previous candle color and current close position", group="Top Bottom Hunter Strategy")
+
+// TBH Enhanced Entry Buffer
+tbh_enhanced_entry_buffer = input.float(2.0, title="Enhanced Entry Buffer Points", minval=0.0, maxval=20.0, step=0.5, tooltip="Minimum points required above/below reference level", group="Top Bottom Hunter Strategy")
+
+// TBH TP MODE TOGGLE - NEW FEATURE
+tbh_tp_mode = input.string("Pure Trailing", title="TBH TP Mode", options=["Fixed TP", "Pure Trailing"], group="Top Bottom Hunter Strategy", tooltip="Fixed TP: Uses fixed take profit points. Pure Trailing: Uses Supertrend trailing only")
+tbh_fixed_tp_points = input.float(50.0, title="Fixed TP Points (when Fixed TP selected)", minval=10.0, maxval=200.0, group="Top Bottom Hunter Strategy")
+
+// Display Settings
+show_tbh_fibs = input.bool(false, title="Show Fibonacci Lines", group="Top Bottom Hunter Strategy")
+show_tbh_supertrend = input.bool(true, title="Show Supertrend Lines", group="Top Bottom Hunter Strategy")
+tbh_enable_alerts = input.bool(true, title="Enable TBH Alerts", group="Top Bottom Hunter Strategy")
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// VWAP STRATEGY INPUTS
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+// VWAP Settings
+var vwap_anchor = input.string(defval = "Session", title="VWAP Anchor Period", options=["Session", "Week", "Month", "Quarter", "Year", "Decade", "Century", "Earnings", "Dividends", "Splits"], group="VWAP Strategy")
+vwap_source = input.source(hlc3, title="VWAP Source", group="VWAP Strategy")
+vwap_hideonDWM = input.bool(false, title="Hide VWAP on 1D or Above", group="VWAP Strategy")
+
+// CROSSOVER LOGIC SELECTION
+vwap_crossover_mode = input.string("Complete Candle", title="Entry Logic", options=["Complete Candle", "Traditional Crossover"], group="VWAP Strategy",tooltip="Complete Candle: Triggers when entire candle is above/below VWAP. Traditional: Requires previous candle on opposite side.")
+
+// ADX Filter Settings for VWAP
+vwap_enable_adx_filter = input.bool(false, title="✅ Enable ADX Trend Filter", group="VWAP Strategy")
+vwap_adx_length = input.int(14, title="ADX Length", minval=1, maxval=50, group="VWAP Strategy")
+vwap_adx_threshold = input.float(25.0, title="ADX Threshold", minval=10.0, maxval=50.0, step=1.0, group="VWAP Strategy")
+
+// Volume Filter Settings for VWAP
+vwap_enable_volume_filter = input.bool(false, title="✅ Enable Volume Above EMA Filter", group="VWAP Strategy")
+vwap_volume_ema_length = input.int(20, title="Volume EMA Length", minval=5, maxval=100, group="VWAP Strategy")
+vwap_volume_multiplier = input.float(1.2, title="Volume Multiplier", minval=1.0, maxval=3.0, step=0.1, group="VWAP Strategy")
+
+// VWAP Display Settings
+show_vwap_line = input.bool(true, title="Show VWAP Line", group="VWAP Strategy")
+vwap_enable_alerts = input.bool(true, title="Enable VWAP Alerts", group="VWAP Strategy")
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// GLOBAL DISPLAY SETTINGS
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+show_performance_table = input.bool(true, title="Show Combined Performance Table", group="Global Display Settings")
+table_position = input.string("bottom_right", title="Table Position", options=["top_left", "top_center", "top_right", "middle_left", "middle_center", "middle_right", "bottom_left", "bottom_center", "bottom_right"], group="Global Display Settings")
+
+// User Info - Updated
+user_login = input.string("eatapple990-cmyk", title="User Login", group="Global Display Settings")
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// UTILITY FUNCTIONS
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+getCurrentTimestamp() =>
+    year_str = str.tostring(year(time))
+    month_str = str.tostring(month(time), "00")
+    day_str = str.tostring(dayofmonth(time), "00")
+    hour_str = str.tostring(hour(time), "00")
+    minute_str = str.tostring(minute(time), "00")
+    second_str = str.tostring(second(time), "00")
+    year_str + "-" + month_str + "-" + day_str + " " + hour_str + ":" + minute_str + ":" + second_str
+
+getTablePosition(pos) =>
+    switch pos
+        "top_left" => position.top_left
+        "top_center" => position.top_center
+        "top_right" => position.top_right
+        "middle_left" => position.middle_left
+        "middle_center" => position.middle_center
+        "middle_right" => position.middle_right
+        "bottom_left" => position.bottom_left
+        "bottom_center" => position.bottom_center
+        "bottom_right" => position.bottom_right
+        => position.bottom_right
+
+calculateWinRate(tpCount, slCount) =>
+    totalTrades = tpCount + slCount
+    totalTrades > 0 ? math.round((tpCount / totalTrades) * 100, 2) : 0.0
+
+getMonthNameWithYear(monthNum, yearNum) =>
+    month_name = switch monthNum
+        1 => "January"
+        2 => "February"
+        3 => "March"
+        4 => "April"
+        5 => "May"
+        6 => "June"
+        7 => "July"
+        8 => "August"
+        9 => "September"
+        10 => "October"
+        11 => "November"
+        12 => "December"
+        => "Unknown"
+    month_name + " " + str.tostring(yearNum)
+
+// FIXED TIME RESTRICTION FUNCTIONS
+isAfter315PM() =>
+    if not enable_315_exit
+        false
+    else
+        t = time('1', 'GMT+5:30')
+        hour(t) > 15 or (hour(t) == 15 and minute(t) >= 15)
+
+// NEW FUNCTION: Block all entries after 3:15 PM
+isEntryBlocked() =>
+    isAfter315PM()
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// TBH CANDLE COLOR FILTER FUNCTIONS
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+// TBH Candle Color Validation
+isTBHCandleColorValid(isBuySignal) =>
+    if not tbh_use_candle_color
+        true
+    else
+        if isBuySignal
+            close > open  // Green candle for BUY
+        else
+            close < open  // Red candle for SELL
+
+// TBH Enhanced Entry Validation with Buffer
+isTBHEnhancedEntryValid(isBuySignal) =>
+    if not tbh_use_enhanced_entry
+        true
+    else
+        // Get previous candle info
+        prev_was_green = close[1] > open[1]
+        prev_was_red = close[1] < open[1]
+        prev_close = close[1]
+        prev_open = open[1]
+        current_close = close
+        buffer_points = tbh_enhanced_entry_buffer
+        
+        if isBuySignal
+            // BUY conditions with buffer
+            if prev_was_green
+                // Previous green: current close should be at least 2 points above previous close
+                current_close >= (prev_close + buffer_points)
+            else if prev_was_red
+                // Previous red: current close should be at least 2 points above previous open
+                current_close >= (prev_open + buffer_points)
+            else
+                // Previous doji or equal: allow entry (no buffer requirement for doji)
+                true
+        else
+            // SELL conditions with buffer
+            if prev_was_green
+                // Previous green: current close should be at least 2 points below previous open
+                current_close <= (prev_open - buffer_points)
+            else if prev_was_red
+                // Previous red: current close should be at least 2 points below previous close
+                current_close <= (prev_close - buffer_points)
+            else
+                // Previous doji or equal: allow entry (no buffer requirement for doji)
+                true
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// FIXED PERFORMANCE TRACKING SYSTEM - CORRECTED DATA DISPLAY
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+// Combined performance tracking arrays - FIXED INITIALIZATION
+var array<int> combined_trade_months = array.new<int>()
+var array<int> combined_trade_years = array.new<int>()
+var array<bool> combined_trade_was_tp = array.new<bool>()
+var array<float> combined_trade_points = array.new<float>()
+var array<string> combined_trade_strategy = array.new<string>()
+
+// Combined counters
+var int combined_total_tp_count = 0
+var int combined_total_sl_count = 0
+var float combined_total_tp_points = 0.0
+var float combined_total_sl_points = 0.0
+
+// Individual strategy counters for display
+var int bb_tp_count = 0
+var int bb_sl_count = 0
+var int breakout_tp_count = 0
+var int breakout_sl_count = 0
+var int tbh_tp_count = 0
+var int tbh_sl_count = 0
+var int vwap_tp_count = 0
+var int vwap_sl_count = 0
+
+// SL Streak tracking
+var int current_sl_streak = 0
+var int max_sl_streak = 0
+var float current_sl_streak_points = 0.0
+var float max_sl_streak_points = 0.0
+
+// ENHANCED OVERLAP FILTER TRACKING
+var bool any_strategy_active = false
+var bool bb_signal_this_bar = false
+var bool breakout_signal_this_bar = false
+var bool tbh_signal_this_bar = false
+var bool vwap_signal_this_bar = false
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// BOLLINGER BAND CALCULATIONS WITH IMPROVED SL LOGIC
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+// Calculate Bollinger Bands
+bb_basis = ta.sma(close, bb_length)
+bb_dev = bb_std_dev * ta.stdev(close, bb_length)
+bb_upper = bb_basis + bb_dev
+bb_lower = bb_basis - bb_dev
+
+// Band width calculation
+band_width = bb_upper - bb_lower
+
+// Band stretch condition
+is_band_stretched = if enable_stretch_filter
+    band_width >= min_band_width
+else
+    true
+
+// Alert candles based on band position
+alert_above_upper = low > bb_upper and is_band_stretched
+alert_below_lower = high < bb_lower and is_band_stretched
+
+// Determine candle color for visual purposes
+is_green_candle = close > open
+is_red_candle = close < open
+
+// Store alert candle information
+var float bb_alert_candle_high = na
+var float bb_alert_candle_low = na
+var bool bb_waiting_for_entry = false
+var bool bb_alert_is_above_upper = false
+var int bb_alert_bar_index = na
+
+// Update alert candle levels
+if alert_above_upper and enable_bb_strategy
+    bb_alert_candle_high := high
+    bb_alert_candle_low := low
+    bb_waiting_for_entry := true
+    bb_alert_is_above_upper := true
+    bb_alert_bar_index := bar_index
+
+if alert_below_lower and enable_bb_strategy
+    bb_alert_candle_high := high
+    bb_alert_candle_low := low
+    bb_waiting_for_entry := true
+    bb_alert_is_above_upper := false
+    bb_alert_bar_index := bar_index
+
+// BB Position tracking
+var bool bb_in_trade = false
+var string bb_trade_type = ""
+var float bb_entry_price = na
+var float bb_stop_loss = na
+var float bb_take_profit = na
+var int bb_entry_bar_index = na
+var string bb_sl_method = ""
+
+// IMPROVED SL CALCULATION FUNCTION
+calculateSmartSL(entryPrice, alertHigh, alertLow, isBuy, maxPoints, buffer) =>
+    var float smartSL = na
+    var string method = ""
+    
+    if isBuy
+        // For BUY: SL should be below entry
+        candleBasedSL = alertLow - buffer
+        fixedPointsSL = entryPrice - maxPoints
+        
+        // Choose whichever gives LESS RISK (higher SL level)
+        smartSL := math.max(candleBasedSL, fixedPointsSL)
+        
+        // Determine which method was used
+        if smartSL == candleBasedSL
+            method := "Candle (" + str.tostring(smartSL, "#.##") + ")"
+        else
+            method := "Fixed " + str.tostring(maxPoints) + "pts (" + str.tostring(smartSL, "#.##") + ")"
+    else
+        // For SELL: SL should be above entry
+        candleBasedSL = alertHigh + buffer
+        fixedPointsSL = entryPrice + maxPoints
+        
+        // Choose whichever gives LESS RISK (lower SL level)
+        smartSL := math.min(candleBasedSL, fixedPointsSL)
+        
+        // Determine which method was used
+        if smartSL == candleBasedSL
+            method := "Candle (" + str.tostring(smartSL, "#.##") + ")"
+        else
+            method := "Fixed " + str.tostring(maxPoints) + "pts (" + str.tostring(smartSL, "#.##") + ")"
+    
+    [smartSL, method]
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// BREAKOUT STRATEGY CALCULATIONS
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+// ATR Trailing calculation for breakout
+Prev = ta.highest(high - Mult * ta.atr(Atr), Hhv)
+cum_1 = ta.cum(1)
+highest_1 = ta.highest(high - Mult * ta.atr(Atr), Hhv)
+highest_2 = ta.highest(high - Mult * ta.atr(Atr), Hhv)
+iff_1 = close > highest_1 and close > close[1] ? highest_2 : Prev
+TS = cum_1 < 16 ? close : iff_1
+iff_2 = close < TS ? color.red : color.black
+Color = close > TS ? color.green : iff_2
+Buy_ATR = ta.crossover(close, TS)
+Sell_ATR = ta.crossunder(close, TS)
+is_auto_tp_time = auto_tp_time and hour(time) == 15 and minute(time) == 15
+
+lll = math.max(math.min(bar_index, 300), 1)
+h_value = ta.highest(lll)
+l_value = ta.lowest(lll)
+chwidth = (h_value - l_value) * cwidthu
+
+ph = ta.pivothigh(high, prd, prd)
+pl = ta.pivotlow(low, prd, prd)
+
+var phval = array.new_float(0)
+var phloc = array.new_int(0)
+var plval = array.new_float(0)
+var plloc = array.new_int(0)
+
+if not na(ph)
+    array.unshift(phval, ph)
+    array.unshift(phloc, bar_index - prd)
+    if array.size(phval) > 1
+        for x = array.size(phloc) - 1 to 1
+            if bar_index - array.get(phloc, x) > bo_len
+                array.pop(phloc)
+                array.pop(phval)
+        
+if not na(pl)
+    array.unshift(plval, pl)
+    array.unshift(plloc, bar_index - prd)
+    if array.size(plval) > 1
+        for x = array.size(plloc) - 1 to 1
+            if bar_index - array.get(plloc, x) > bo_len
+                array.pop(plloc)
+                array.pop(plval)
+
+// Breakout Detection
+bullish_breakout_base = false
+var float breakout_entry_candle_low = na
+
+hgst_value = ta.highest(prd)[1]
+
+if array.size(phval) >= mintest and close > open and enable_breakout_strategy and not isEntryBlocked()
+    if close > hgst_value
+        bomax = array.get(phval, 0)
+        xx = 0
+        for x = 0 to array.size(phval) - 1
+            if array.get(phval, x) >= close
+                break
+            xx := x
+            bomax := math.max(bomax, array.get(phval, x))
+        if xx >= mintest and open <= bomax
+            num = 0
+            for x = 0 to xx
+                if array.get(phval, x) <= bomax and array.get(phval, x) >= bomax - chwidth
+                    num += 1
+            if num >= mintest and hgst_value < bomax
+                points_above_zone = close - bomax
+                if points_above_zone >= min_points_above_zone
+                    bullish_breakout_base := true
+                    breakout_entry_candle_low := low
+
+bearish_breakdown_base = false
+var float breakout_entry_candle_high = na
+
+lwst_value = ta.lowest(prd)[1]
+
+if array.size(plval) >= mintest and close < open and enable_breakout_strategy and not isEntryBlocked()
+    if close < lwst_value
+        bomin = array.get(plval, 0)
+        xx = 0
+        for x = 0 to array.size(plval) - 1
+            if array.get(plval, x) <= close
+                break
+            xx := x
+            bomin := math.min(bomin, array.get(plval, x))
+        if xx >= mintest and open >= bomin
+            num1 = 0
+            for x = 0 to xx
+                if array.get(plval, x) >= bomin and array.get(plval, x) <= bomin + chwidth
+                    num1 += 1
+            if num1 >= mintest and lwst_value > bomin
+                points_below_zone = bomin - close
+                if points_below_zone >= min_points_below_zone
+                    bearish_breakdown_base := true
+                    breakout_entry_candle_high := high
+
+// Breakout Trade Management Variables
+var bool breakout_in_trade = false
+var string breakout_trade_type = ""
+var float breakout_entry_price = na
+var float breakout_stop_loss = na
+var int breakout_entry_bar_index = na
+
+// Breakout Trade Exit Flags
+var bool breakout_tp_hit_alert = false
+var bool breakout_sl_hit_alert = false
+var bool breakout_auto_tp_hit_alert = false
+var bool breakout_315_exit = false
+var float breakout_trade_points_tp = 0.0
+var float breakout_trade_points_sl = 0.0
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// TOP BOTTOM HUNTER WITH PURE SUPERTREND TRAILING - NO FIXED TP
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+// Swing High/Low for Fib
+tbh_swing_high = ta.highest(high, tbh_swing_len)
+tbh_swing_low  = ta.lowest(low, tbh_swing_len)
+tbh_fib_range  = tbh_swing_high - tbh_swing_low
+
+tbh_fib_level_0 = tbh_swing_high - (tbh_fib_range * tbh_fib_0)
+tbh_fib_level_1 = tbh_swing_high - (tbh_fib_range * tbh_fib_1)
+
+// RSI
+tbh_rsi_value = ta.rsi(close, tbh_rsi_length)
+
+// Volume MA
+tbh_volume_ma = ta.sma(volume, tbh_volume_ma_length)
+tbh_volume_confirmed = volume > (tbh_volume_ma * tbh_volume_multiplier)
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// SUPERTREND CALCULATION - SMOOTH VERSION (MATCHING REFERENCE SCRIPT)
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+// ATR and median price for Supertrend
+tbh_atr_value = ta.atr(tbh_supertrend_atr_length)
+tbh_hl2 = (high + low) / 2
+
+// Calculate basic bands
+tbh_basic_upperband = tbh_hl2 + (tbh_supertrend_multiplier * tbh_atr_value)
+tbh_basic_lowerband = tbh_hl2 - (tbh_supertrend_multiplier * tbh_atr_value)
+
+// SMOOTHING LOGIC - This is what makes it stable!
+var float tbh_upperband = na
+var float tbh_lowerband = na
+
+// Upper band smoothing - only moves up, never down when in uptrend
+tbh_upperband := tbh_basic_upperband < nz(tbh_upperband[1], tbh_basic_upperband) or close[1] > nz(tbh_upperband[1], tbh_basic_upperband) ? tbh_basic_upperband : nz(tbh_upperband[1], tbh_basic_upperband)
+
+// Lower band smoothing - only moves down, never up when in downtrend  
+tbh_lowerband := tbh_basic_lowerband > nz(tbh_lowerband[1], tbh_basic_lowerband) or close[1] < nz(tbh_lowerband[1], tbh_basic_lowerband) ? tbh_basic_lowerband : nz(tbh_lowerband[1], tbh_basic_lowerband)
+
+// Supertrend calculation with smoothed bands
+var float tbh_supertrend = na
+var int tbh_direction = 1
+
+// Direction logic
+tbh_direction := close > nz(tbh_upperband[1], tbh_upperband) ? -1 : close < nz(tbh_lowerband[1], tbh_lowerband) ? 1 : nz(tbh_direction[1], 1)
+
+// Supertrend value
+tbh_supertrend := tbh_direction == -1 ? tbh_lowerband : tbh_upperband
+
+// Supertrend crossover signals
+tbh_buy_supertrend = ta.crossover(close, tbh_supertrend)
+tbh_sell_supertrend = ta.crossunder(close, tbh_supertrend)
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// TBH POSITION MANAGEMENT - PURE TRAILING LOGIC (NO FIXED TP)
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+var bool tbh_in_trade = false
+var string tbh_trade_type = na
+var float tbh_entry_price = na
+var float tbh_initial_sl = na  // Initial SL (Fixed/Candle based)
+var float tbh_current_sl = na  // Current active SL (can switch to Supertrend)
+var float tbh_take_profit = na  // Take profit level (only for Fixed TP mode)
+var bool tbh_supertrend_activated = false  // Flag when Supertrend takes over
+var int tbh_entry_bar_index = na
+var float tbh_entry_candle_low = na
+var float tbh_entry_candle_high = na
+var bool tbh_using_fixed_tp = false  // Track which TP mode is active
+
+// TBH Entry Conditions - WITH ALL FILTERS (TIME, CANDLE COLOR, ENHANCED ENTRY)
+tbh_buy_condition_base  = ta.crossover(tbh_rsi_value, tbh_rsi_oversold) and close > tbh_fib_level_1 and 
+                         (not tbh_volume_enabled or tbh_volume_confirmed) and not tbh_in_trade and 
+                         enable_tbh_strategy and not isEntryBlocked() and 
+                         isTBHCandleColorValid(true) and isTBHEnhancedEntryValid(true)
+
+tbh_sell_condition_base = ta.crossunder(tbh_rsi_value, tbh_rsi_overbought) and close < tbh_fib_level_0 and 
+                         (not tbh_volume_enabled or tbh_volume_confirmed) and not tbh_in_trade and 
+                         enable_tbh_strategy and not isEntryBlocked() and 
+                         isTBHCandleColorValid(false) and isTBHEnhancedEntryValid(false)
+
+// TBH Trade Exit Flags
+var bool tbh_tp_hit = false
+var bool tbh_sl_hit = false
+var bool tbh_315_exit = false
+var float tbh_trade_points_tp = 0.0
+var float tbh_trade_points_sl = 0.0
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// VWAP STRATEGY CALCULATIONS
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+// Check volume availability
+cumVolume = ta.cum(volume)
+
+// Corporate events for VWAP anchoring
+new_earnings = request.earnings(syminfo.tickerid, earnings.actual, barmerge.gaps_on, barmerge.lookahead_on, ignore_invalid_symbol=true)
+new_dividends = request.dividends(syminfo.tickerid, dividends.gross, barmerge.gaps_on, barmerge.lookahead_on, ignore_invalid_symbol=true)
+new_split = request.splits(syminfo.tickerid, splits.denominator, barmerge.gaps_on, barmerge.lookahead_on, ignore_invalid_symbol=true)
+
+// Determine new period for VWAP reset
+vwap_isNewPeriod = switch vwap_anchor
+	"Earnings"  => not na(new_earnings)
+	"Dividends" => not na(new_dividends)
+	"Splits"    => not na(new_split)
+	"Session"   => timeframe.change("D")
+	"Week"      => timeframe.change("W")
+	"Month"     => timeframe.change("M")
+	"Quarter"   => timeframe.change("3M")
+	"Year"      => timeframe.change("12M")
+	"Decade"    => timeframe.change("12M") and year % 10 == 0
+	"Century"   => timeframe.change("12M") and year % 100 == 0
+	=> false
+
+vwap_isEsdAnchor = vwap_anchor == "Earnings" or vwap_anchor == "Dividends" or vwap_anchor == "Splits"
+if na(vwap_source[1]) and not vwap_isEsdAnchor
+	vwap_isNewPeriod := true
+
+// Calculate proper VWAP
+float vwapValue = na
+if not (vwap_hideonDWM and timeframe.isdwm)
+    [_vwap, _stdevUpper, _] = ta.vwap(vwap_source, vwap_isNewPeriod, 1)
+	vwapValue := _vwap
+
+// VWAP ADX Calculation
+vwap_smoothing_rma(src, length) =>
+    alpha = 2.0 / (length + 1)
+    var float rma_val = na
+    rma_val := na(rma_val[1]) ? src : alpha * src + (1 - alpha) * rma_val[1]
+    rma_val
+
+vwap_dirmov(len) =>
+    up = math.max(high - high[1], 0)
+    down = math.max(low[1] - low, 0)
+    plusDM = up > down and up > 0 ? up : 0
+    minusDM = down > up and down > 0 ? down : 0
+    
+    truerange = math.max(high - low, math.max(math.abs(high - close[1]), math.abs(low - close[1])))
+    truerange_smooth = vwap_smoothing_rma(truerange, len)
+    
+    plus = truerange_smooth > 0 ? 100 * vwap_smoothing_rma(plusDM, len) / truerange_smooth : 0
+    minus = truerange_smooth > 0 ? 100 * vwap_smoothing_rma(minusDM, len) / truerange_smooth : 0
+    [plus, minus]
+
+vwap_adx_calc(dilen) =>
+    [plus, minus] = vwap_dirmov(dilen)
+    sum = plus + minus
+    adx_value = sum > 0 ? 100 * vwap_smoothing_rma(math.abs(plus - minus) / sum, dilen) : 0
+    adx_value
+
+vwap_adx_value = vwap_adx_calc(vwap_adx_length)
+vwap_adx_condition = not vwap_enable_adx_filter or vwap_adx_value >= vwap_adx_threshold
+
+// VWAP Volume Filter
+vwap_ema_calc(src, length) =>
+    alpha = 2.0 / (length + 1)
+    var float ema_val = na
+    ema_val := na(ema_val[1]) ? src : alpha * src + (1 - alpha) * ema_val[1]
+    ema_val
+
+vwap_volume_ema = vwap_ema_calc(volume, vwap_volume_ema_length)
+vwap_volume_condition = not vwap_enable_volume_filter or volume > (vwap_volume_ema * vwap_volume_multiplier)
+
+// VWAP Crossover Detection
+vwap_prev_candle_above_vwap = close[1] > vwapValue[1]
+vwap_prev_candle_below_vwap = close[1] < vwapValue[1]
+vwap_current_candle_above_vwap = close > vwapValue
+vwap_current_candle_below_vwap = close < vwapValue
+
+// Complete candle closure requirements
+vwap_complete_candle_above = low > vwapValue  // Entire candle above VWAP
+vwap_complete_candle_below = high < vwapValue  // Entire candle below VWAP
+
+// Base VWAP Crossover Detection
+vwap_cross_above_base = if vwap_crossover_mode == "Complete Candle"
+    vwap_complete_candle_above and vwap_current_candle_above_vwap
+else
+    vwap_prev_candle_below_vwap and vwap_complete_candle_above
+
+vwap_cross_below_base = if vwap_crossover_mode == "Complete Candle"
+    vwap_complete_candle_below and vwap_current_candle_below_vwap
+else
+    vwap_prev_candle_above_vwap and vwap_complete_candle_below
+
+// VWAP Trade Management Variables
+var bool vwap_in_trade = false
+var string vwap_trade_type = ""
+var float vwap_entry_price = na
+var float vwap_stop_loss = na
+var int vwap_entry_bar_index = na
+
+// VWAP Trade Exit Flags
+var bool vwap_tp_hit_alert = false
+var bool vwap_sl_hit_alert = false
+var bool vwap_auto_tp_hit_alert = false
+var bool vwap_315_exit = false
+var float vwap_trade_points_tp = 0.0
+var float vwap_trade_points_sl = 0.0
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// ENHANCED OVERLAP FILTER LOGIC - NOW WITH 4 STRATEGIES (INCLUDING VWAP)
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+// Update active trade status FIRST
+any_strategy_active := bb_in_trade or breakout_in_trade or tbh_in_trade or vwap_in_trade
+
+// Reset overlap tracking at start of each bar
+bb_signal_this_bar := false
+breakout_signal_this_bar := false
+tbh_signal_this_bar := false
+vwap_signal_this_bar := false
+
+// Base signal conditions (without overlap filtering) - WITH TIME EXCLUSION
+bb_sell_base = bb_waiting_for_entry and bb_alert_is_above_upper and close < bb_alert_candle_low and enable_bb_strategy and not isEntryBlocked() 
+bb_buy_base = bb_waiting_for_entry and not bb_alert_is_above_upper and close > bb_alert_candle_high and enable_bb_strategy and not isEntryBlocked()
+
+// Check for potential signals
+bb_has_signal = (bb_sell_base or bb_buy_base) and enable_bb_strategy
+breakout_has_signal = (bullish_breakout_base or bearish_breakdown_base) and enable_breakout_strategy
+tbh_has_signal = (tbh_buy_condition_base or tbh_sell_condition_base) and enable_tbh_strategy
+vwap_has_signal = enable_vwap_strategy and ((vwap_cross_above_base and vwap_adx_condition and vwap_volume_condition) or (vwap_cross_below_base and vwap_adx_condition and vwap_volume_condition))
+
+// Count how many strategies want to signal this bar
+signals_count = 0
+if bb_has_signal
+    signals_count := signals_count + 1
+if breakout_has_signal
+    signals_count := signals_count + 1
+if tbh_has_signal
+    signals_count := signals_count + 1
+if vwap_has_signal
+    signals_count := signals_count + 1
+
+// ENHANCED OVERLAP FILTER CONDITIONS:
+// 1. If overlap filter is disabled, allow all signals
+// 2. If no active trades, allow all signals (normal overlap filter)
+// 3. If ANY strategy has active trade, block ALL new signals
+overlap_filter_blocks_all = enable_overlap_filter and any_strategy_active
+same_bar_overlap = enable_overlap_filter and signals_count > 1 and not any_strategy_active
+
+
+
+// TEST VERSION 20: BB Priority - BB > TBH > Breakout > VWAP
+bb_signal_allowed = not overlap_filter_blocks_all and (not same_bar_overlap or (same_bar_overlap and bb_has_signal))
+tbh_signal_allowed = not overlap_filter_blocks_all and (not same_bar_overlap or (same_bar_overlap and tbh_has_signal and not bb_has_signal))
+breakout_signal_allowed = not overlap_filter_blocks_all and (not same_bar_overlap or (same_bar_overlap and breakout_has_signal and not bb_has_signal and not tbh_has_signal))
+vwap_signal_allowed = not overlap_filter_blocks_all and (not same_bar_overlap or (same_bar_overlap and vwap_has_signal and not bb_has_signal and not tbh_has_signal and not breakout_has_signal))
+
+
+
+// Final signal determination
+bullish_breakout = bullish_breakout_base and breakout_signal_allowed
+bearish_breakdown = bearish_breakdown_base and breakout_signal_allowed
+bb_sell_entry = bb_sell_base and bb_signal_allowed
+bb_buy_entry = bb_buy_base and bb_signal_allowed
+tbh_buy_condition = tbh_buy_condition_base and tbh_signal_allowed
+tbh_sell_condition = tbh_sell_condition_base and tbh_signal_allowed
+vwap_buy_signal = vwap_cross_above_base and vwap_adx_condition and vwap_volume_condition and enable_vwap_strategy and not isEntryBlocked() and vwap_signal_allowed
+vwap_sell_signal = vwap_cross_below_base and vwap_adx_condition and vwap_volume_condition and enable_vwap_strategy and not isEntryBlocked() and vwap_signal_allowed
+
+// Update signal tracking flags
+if bullish_breakout or bearish_breakdown
+    breakout_signal_this_bar := true
+if bb_sell_entry or bb_buy_entry
+    bb_signal_this_bar := true
+if tbh_buy_condition or tbh_sell_condition
+    tbh_signal_this_bar := true
+if vwap_buy_signal or vwap_sell_signal
+    vwap_signal_this_bar := true
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// TRADE MANAGEMENT AND POSITION UPDATES
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+// Generate BB entry signals with IMPROVED SL LOGIC
+if bb_sell_entry and not bb_in_trade
+    bb_in_trade := true
+    bb_trade_type := "SELL"
+    bb_entry_price := close
+    
+    if bb_sl_type == "Smart SL (Min Risk)"
+        [sl_level, sl_desc] = calculateSmartSL(bb_entry_price, bb_alert_candle_high, bb_alert_candle_low, false, bb_fixed_sl_points, bb_sl_buffer)
+        bb_stop_loss := sl_level
+        bb_sl_method := "Smart: " + sl_desc
+    else if bb_sl_type == "Candle Based"
+        bb_stop_loss := bb_alert_candle_high + bb_sl_buffer
+        bb_sl_method := "Candle (" + str.tostring(bb_stop_loss, "#.##") + ")"
+    else
+        bb_stop_loss := bb_entry_price + bb_fixed_sl_points
+        bb_sl_method := "Fixed +" + str.tostring(bb_fixed_sl_points) + " pts"
+    
+    bb_take_profit := bb_entry_price - tp_points
+    bb_entry_bar_index := bar_index
+    bb_waiting_for_entry := false
+
+if bb_buy_entry and not bb_in_trade
+    bb_in_trade := true
+    bb_trade_type := "BUY"
+    bb_entry_price := close
+    
+    if bb_sl_type == "Smart SL (Min Risk)"
+        [sl_level, sl_desc] = calculateSmartSL(bb_entry_price, bb_alert_candle_high, bb_alert_candle_low, true, bb_fixed_sl_points, bb_sl_buffer)
+        bb_stop_loss := sl_level
+        bb_sl_method := "Smart: " + sl_desc
+    else if bb_sl_type == "Candle Based"
+        bb_stop_loss := bb_alert_candle_low - bb_sl_buffer
+        bb_sl_method := "Candle (" + str.tostring(bb_stop_loss, "#.##") + ")"
+    else
+        bb_stop_loss := bb_entry_price - bb_fixed_sl_points
+        bb_sl_method := "Fixed -" + str.tostring(bb_fixed_sl_points) + " pts"
+    
+    bb_take_profit := bb_entry_price + tp_points
+    bb_entry_bar_index := bar_index
+    bb_waiting_for_entry := false
+
+// Reset waiting state if no entry after 5 bars
+if bb_waiting_for_entry and bar_index > bb_alert_bar_index + 5
+    bb_waiting_for_entry := false
+
+// Breakout Entry Logic
+if bullish_breakout and not breakout_in_trade
+    breakout_in_trade := true
+    breakout_trade_type := "BUY"
+    breakout_entry_price := close
+    breakout_entry_bar_index := bar_index
+    
+    if breakout_sl_type == "Fixed Points"
+        breakout_stop_loss := breakout_entry_price - breakout_fixed_sl_points
+    else if breakout_sl_type == "ATR Trailing"
+        breakout_stop_loss := TS
+    else if breakout_sl_type == "Entry Candle Low"
+        breakout_stop_loss := breakout_entry_candle_low - entry_candle_buffer
+    
+if bearish_breakdown and not breakout_in_trade
+    breakout_in_trade := true
+    breakout_trade_type := "SELL"
+    breakout_entry_price := close
+    breakout_entry_bar_index := bar_index
+    
+    if breakout_sl_type == "Fixed Points"
+        breakout_stop_loss := breakout_entry_price + breakout_fixed_sl_points
+    else if breakout_sl_type == "ATR Trailing"
+        breakout_stop_loss := TS
+    else if breakout_sl_type == "Entry Candle Low"
+        breakout_stop_loss := breakout_entry_candle_high + entry_candle_buffer
+
+// Update ATR trailing SL for breakout
+if breakout_in_trade and breakout_sl_type == "ATR Trailing"
+    if breakout_trade_type == "BUY"
+        if TS > breakout_entry_price
+            breakout_stop_loss := TS
+    else if breakout_trade_type == "SELL"
+        if TS < breakout_entry_price
+            breakout_stop_loss := TS
+
+// TBH Entry Logic
+if tbh_buy_condition and not tbh_in_trade
+    tbh_in_trade := true
+    tbh_trade_type := "BUY"
+    tbh_entry_price := close
+    tbh_entry_bar_index := bar_index
+    tbh_entry_candle_low := low
+    tbh_entry_candle_high := high
+    tbh_supertrend_activated := false
+    tbh_using_fixed_tp := (tbh_tp_mode == "Fixed TP")
+    
+    // Set initial SL based on type
+    if tbh_initial_sl_type == "Fixed Points"
+        tbh_initial_sl := tbh_entry_price - tbh_fixed_sl_points
+    else if tbh_initial_sl_type == "Entry Candle Low"
+        tbh_initial_sl := tbh_entry_candle_low - tbh_entry_candle_buffer
+    
+    // Set TP based on mode
+    if tbh_using_fixed_tp
+        tbh_take_profit := tbh_entry_price + tbh_fixed_tp_points
+    else
+        tbh_take_profit := na  // No fixed TP for trailing mode
+    
+    // Start with initial SL
+    tbh_current_sl := tbh_initial_sl
+
+if tbh_sell_condition and not tbh_in_trade
+    tbh_in_trade := true
+    tbh_trade_type := "SELL"
+    tbh_entry_price := close
+    tbh_entry_bar_index := bar_index
+    tbh_entry_candle_low := low
+    tbh_entry_candle_high := high
+    tbh_supertrend_activated := false
+    tbh_using_fixed_tp := (tbh_tp_mode == "Fixed TP")
+    
+    // Set initial SL based on type
+    if tbh_initial_sl_type == "Fixed Points"
+        tbh_initial_sl := tbh_entry_price + tbh_fixed_sl_points
+    else if tbh_initial_sl_type == "Entry Candle Low"
+        tbh_initial_sl := tbh_entry_candle_high + tbh_entry_candle_buffer
+    
+    // Set TP based on mode
+    if tbh_using_fixed_tp
+        tbh_take_profit := tbh_entry_price - tbh_fixed_tp_points
+    else
+        tbh_take_profit := na  // No fixed TP for trailing mode
+    
+    // Start with initial SL
+    tbh_current_sl := tbh_initial_sl
+
+// VWAP Entry Logic
+if vwap_buy_signal and not vwap_in_trade
+    vwap_in_trade := true
+    vwap_trade_type := "BUY"
+    vwap_entry_price := close
+    vwap_stop_loss := TS
+    vwap_entry_bar_index := bar_index
+
+if vwap_sell_signal and not vwap_in_trade
+    vwap_in_trade := true
+    vwap_trade_type := "SELL"
+    vwap_entry_price := close
+    vwap_stop_loss := TS
+    vwap_entry_bar_index := bar_index
+
+// Update VWAP trailing stop
+if vwap_in_trade
+    if vwap_trade_type == "BUY"
+        if TS > vwap_entry_price
+            vwap_stop_loss := TS
+    else if vwap_trade_type == "SELL"
+        if TS < vwap_entry_price
+            vwap_stop_loss := TS
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// TBH DUAL MODE TRAILING MANAGEMENT - FIXED TP OR PURE TRAILING
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+if tbh_in_trade and bar_index > tbh_entry_bar_index and not tbh_315_exit
+    
+    if tbh_using_fixed_tp
+        // FIXED TP MODE - Traditional TP/SL logic (no trailing)
+        if tbh_trade_type == "BUY"
+            if low <= tbh_current_sl
+                tbh_sl_hit := true
+                tbh_in_trade := false
+                tbh_trade_points_sl := tbh_entry_price - tbh_current_sl
+            else if high >= tbh_take_profit
+                tbh_tp_hit := true
+                tbh_in_trade := false
+                tbh_trade_points_tp := tbh_take_profit - tbh_entry_price
+        else if tbh_trade_type == "SELL"
+            if high >= tbh_current_sl
+                tbh_sl_hit := true
+                tbh_in_trade := false
+                tbh_trade_points_sl := tbh_current_sl - tbh_entry_price
+            else if low <= tbh_take_profit
+                tbh_tp_hit := true
+                tbh_in_trade := false
+                tbh_trade_points_tp := tbh_entry_price - tbh_take_profit
+    else
+        // PURE TRAILING MODE - Original supertrend trailing logic
+        
+        // CHECK IF SUPERTREND SHOULD TAKE OVER THE TRAILING
+        if not tbh_supertrend_activated
+            if tbh_trade_type == "BUY"
+                // For BUY: Activate Supertrend when GREEN line (lowerband) crosses ABOVE the initial SL zone
+                if tbh_lowerband > tbh_initial_sl
+                    tbh_supertrend_activated := true
+                    tbh_current_sl := tbh_lowerband  // Switch to GREEN supertrend line
+            else if tbh_trade_type == "SELL"
+                // For SELL: Activate Supertrend when RED line (upperband) crosses BELOW the initial SL zone  
+                if tbh_upperband < tbh_initial_sl
+                    tbh_supertrend_activated := true
+                    tbh_current_sl := tbh_upperband  // Switch to RED supertrend line
+
+        // UPDATE TRAILING SL - Use appropriate supertrend band
+        if tbh_supertrend_activated
+            if tbh_trade_type == "BUY"
+                // Use GREEN line (lowerband) for BUY - trail upwards only
+                if tbh_lowerband > tbh_current_sl
+                    tbh_current_sl := tbh_lowerband  // Trail upwards with green line
+            else if tbh_trade_type == "SELL"
+                // Use RED line (upperband) for SELL - trail downwards only  
+                if tbh_upperband < tbh_current_sl
+                    tbh_current_sl := tbh_upperband  // Trail downwards with red line
+
+        // TRAILING EXIT LOGIC
+        if tbh_supertrend_activated
+            // Supertrend-based exits using appropriate bands
+            tbh_should_exit = false
+            
+            if tbh_trade_type == "BUY"
+                // Exit BUY when price crosses BELOW the green trailing line
+                if low <= tbh_lowerband and close < tbh_lowerband
+                    tbh_should_exit := true
+            else if tbh_trade_type == "SELL"
+                // Exit SELL when price crosses ABOVE the red trailing line
+                if high >= tbh_upperband and close > tbh_upperband
+                    tbh_should_exit := true
+            
+            if tbh_should_exit
+                tbh_trade_points_tp := tbh_trade_type == "BUY" ? close - tbh_entry_price : tbh_entry_price - close
+                
+                if tbh_trade_points_tp > 0
+                    tbh_tp_hit := true
+                else
+                    tbh_sl_hit := true
+                    tbh_trade_points_sl := math.abs(tbh_trade_points_tp)
+                
+                tbh_in_trade := false
+                tbh_supertrend_activated := false
+        else
+            // Initial SL logic (before Supertrend activation)
+            if tbh_trade_type == "BUY"
+                if low <= tbh_current_sl
+                    tbh_sl_hit := true
+                    tbh_in_trade := false
+                    tbh_trade_points_sl := tbh_entry_price - tbh_current_sl
+            else if tbh_trade_type == "SELL"
+                if high >= tbh_current_sl
+                    tbh_sl_hit := true
+                    tbh_in_trade := false
+                    tbh_trade_points_sl := tbh_current_sl - tbh_entry_price
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// TRADE EXIT MANAGEMENT (BB, BREAKOUT & VWAP)
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+// BB Trade Management
+var bool bb_tp_hit = false
+var bool bb_sl_hit = false
+var bool bb_315_exit = false
+var float bb_trade_points_tp = 0.0
+var float bb_trade_points_sl = 0.0
+
+// 3:15 PM Auto Exit for BB
+if bb_in_trade and isAfter315PM()
+    bb_315_exit := true
+    bb_in_trade := false
+    if bb_trade_type == "BUY"
+        bb_trade_points_tp := close - bb_entry_price
+    else
+        bb_trade_points_tp := bb_entry_price - close
+
+// Only check TP/SL on candles AFTER entry candle
+if bb_in_trade and bar_index > bb_entry_bar_index and not bb_315_exit
+    if bb_trade_type == "BUY"
+        if low <= bb_stop_loss
+            bb_sl_hit := true
+            bb_in_trade := false
+            bb_trade_points_sl := bb_entry_price - bb_stop_loss
+        else if high >= bb_take_profit
+            bb_tp_hit := true
+            bb_in_trade := false
+            bb_trade_points_tp := bb_take_profit - bb_entry_price
+    
+    if bb_trade_type == "SELL"
+        if high >= bb_stop_loss
+            bb_sl_hit := true
+            bb_in_trade := false
+            bb_trade_points_sl := bb_stop_loss - bb_entry_price
+        else if low <= bb_take_profit
+            bb_tp_hit := true
+            bb_in_trade := false
+            bb_trade_points_tp := bb_entry_price - bb_take_profit
+
+// 3:15 PM Auto Exit for Breakout
+if breakout_in_trade and isAfter315PM()
+    breakout_315_exit := true
+    breakout_in_trade := false
+    breakout_trade_points_tp := breakout_trade_type == "BUY" ? close - breakout_entry_price : breakout_entry_price - close
+
+// Breakout Trade Exit Logic
+if breakout_in_trade and bar_index > breakout_entry_bar_index and not breakout_315_exit
+    
+    // Auto TP at 3:15 PM
+    if is_auto_tp_time
+        breakout_auto_tp_hit_alert := true
+        breakout_in_trade := false
+        breakout_trade_points_tp := breakout_trade_type == "BUY" ? close - breakout_entry_price : breakout_entry_price - close
+    
+    // Regular Exit Logic
+    else if breakout_sl_type == "Fixed Points" or breakout_sl_type == "Entry Candle Low"
+        if breakout_trade_type == "BUY"
+            if low <= breakout_stop_loss
+                breakout_sl_hit_alert := true
+                breakout_in_trade := false
+                breakout_trade_points_sl := breakout_entry_price - breakout_stop_loss
+            else if (Buy_ATR or Sell_ATR) and close > breakout_entry_price
+                breakout_tp_hit_alert := true
+                breakout_in_trade := false
+                breakout_trade_points_tp := close - breakout_entry_price
+        else if breakout_trade_type == "SELL"
+            if high >= breakout_stop_loss
+                breakout_sl_hit_alert := true
+                breakout_in_trade := false
+                breakout_trade_points_sl := breakout_stop_loss - breakout_entry_price
+            else if (Buy_ATR or Sell_ATR) and close < breakout_entry_price
+                breakout_tp_hit_alert := true
+                breakout_in_trade := false
+                breakout_trade_points_tp := breakout_entry_price - close
+    
+    else if breakout_sl_type == "ATR Trailing"
+        if breakout_trade_type == "BUY"
+            if Buy_ATR or Sell_ATR
+                if close > breakout_entry_price
+                    breakout_tp_hit_alert := true
+                    breakout_in_trade := false
+                    breakout_trade_points_tp := close - breakout_entry_price
+                else
+                    breakout_sl_hit_alert := true
+                    breakout_in_trade := false
+                    breakout_trade_points_sl := breakout_entry_price - close
+        else if breakout_trade_type == "SELL"
+            if Buy_ATR or Sell_ATR
+                if close < breakout_entry_price
+                    breakout_tp_hit_alert := true
+                    breakout_in_trade := false
+                    breakout_trade_points_tp := breakout_entry_price - close
+                else
+                    breakout_sl_hit_alert := true
+                    breakout_in_trade := false
+                    breakout_trade_points_sl := close - breakout_entry_price
+
+// TBH Trade Management with 3:15 PM Auto Exit
+if tbh_in_trade and isAfter315PM()
+    tbh_315_exit := true
+    tbh_in_trade := false
+    tbh_supertrend_activated := false
+    if tbh_trade_type == "BUY"
+        tbh_trade_points_tp := close - tbh_entry_price
+    else
+        tbh_trade_points_tp := tbh_entry_price - close
+
+// VWAP 3:15 PM Auto Exit
+if vwap_in_trade and isAfter315PM()
+    vwap_315_exit := true
+    vwap_in_trade := false
+    vwap_trade_points_tp := vwap_trade_type == "BUY" ? close - vwap_entry_price : vwap_entry_price - close
+
+// VWAP Trade Exit Logic using breakout-style trailing
+if vwap_in_trade and bar_index > vwap_entry_bar_index and not vwap_315_exit
+    
+    // Auto TP at 3:15 PM
+    if is_auto_tp_time
+        vwap_auto_tp_hit_alert := true
+        vwap_in_trade := false
+        vwap_trade_points_tp := vwap_trade_type == "BUY" ? close - vwap_entry_price : vwap_entry_price - close
+    
+    // Trailing Exit Logic
+    else
+        if vwap_trade_type == "BUY"
+            if Buy_ATR or Sell_ATR
+                if close > vwap_entry_price
+                    vwap_tp_hit_alert := true
+                    vwap_in_trade := false
+                    vwap_trade_points_tp := close - vwap_entry_price
+                else
+                    vwap_sl_hit_alert := true
+                    vwap_in_trade := false
+                    vwap_trade_points_sl := vwap_entry_price - close
+        else if vwap_trade_type == "SELL"
+            if Buy_ATR or Sell_ATR
+                if close < vwap_entry_price
+                    vwap_tp_hit_alert := true
+                    vwap_in_trade := false
+                    vwap_trade_points_tp := vwap_entry_price - close
+                else
+                    vwap_sl_hit_alert := true
+                    vwap_in_trade := false
+                    vwap_trade_points_sl := close - vwap_entry_price
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// CORRECTED PERFORMANCE TRACKING FOR BB, BREAKOUT, TBH & VWAP
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+// BB Performance Updates
+if bb_tp_hit or bb_315_exit
+    points_to_add = bb_315_exit ? math.abs(bb_trade_points_tp) : math.abs(bb_trade_points_tp)
+    is_tp = bb_315_exit ? (bb_trade_points_tp > 0) : true
+    
+    array.push(combined_trade_months, month(time))
+    array.push(combined_trade_years, year(time))
+    array.push(combined_trade_was_tp, is_tp)
+    array.push(combined_trade_points, points_to_add)
+    array.push(combined_trade_strategy, "BB")
+    
+    if is_tp
+        combined_total_tp_count += 1
+        combined_total_tp_points += points_to_add
+        bb_tp_count += 1
+        current_sl_streak := 0
+        current_sl_streak_points := 0.0
+    else
+        combined_total_sl_count += 1
+        combined_total_sl_points += points_to_add
+        bb_sl_count += 1
+        current_sl_streak += 1
+        current_sl_streak_points += points_to_add
+        if current_sl_streak > max_sl_streak
+            max_sl_streak := current_sl_streak
+            max_sl_streak_points := current_sl_streak_points
+
+if bb_sl_hit
+    array.push(combined_trade_months, month(time))
+    array.push(combined_trade_years, year(time))
+    array.push(combined_trade_was_tp, false)
+    array.push(combined_trade_points, math.abs(bb_trade_points_sl))
+    array.push(combined_trade_strategy, "BB")
+    
+    combined_total_sl_count += 1
+    combined_total_sl_points += math.abs(bb_trade_points_sl)
+    bb_sl_count += 1
+    current_sl_streak += 1
+    current_sl_streak_points += math.abs(bb_trade_points_sl)
+    if current_sl_streak > max_sl_streak
+        max_sl_streak := current_sl_streak
+        max_sl_streak_points := current_sl_streak_points
+
+// Breakout Performance Updates
+if breakout_tp_hit_alert or breakout_auto_tp_hit_alert or breakout_315_exit
+    points_to_add = breakout_315_exit ? math.abs(breakout_trade_points_tp) : math.abs(breakout_trade_points_tp)
+    is_tp = breakout_315_exit ? (breakout_trade_points_tp > 0) : true
+    
+    array.push(combined_trade_months, month(time))
+    array.push(combined_trade_years, year(time))
+    array.push(combined_trade_was_tp, is_tp)
+    array.push(combined_trade_points, points_to_add)
+    array.push(combined_trade_strategy, "BREAKOUT")
+    
+    if is_tp
+        combined_total_tp_count += 1
+        combined_total_tp_points += points_to_add
+        breakout_tp_count += 1
+        current_sl_streak := 0
+        current_sl_streak_points := 0.0
+    else
+        combined_total_sl_count += 1
+        combined_total_sl_points += points_to_add
+        breakout_sl_count += 1
+        current_sl_streak += 1
+        current_sl_streak_points += points_to_add
+        if current_sl_streak > max_sl_streak
+            max_sl_streak := current_sl_streak
+            max_sl_streak_points := current_sl_streak_points
+
+if breakout_sl_hit_alert
+    array.push(combined_trade_months, month(time))
+    array.push(combined_trade_years, year(time))
+    array.push(combined_trade_was_tp, false)
+    array.push(combined_trade_points, math.abs(breakout_trade_points_sl))
+    array.push(combined_trade_strategy, "BREAKOUT")
+    
+    combined_total_sl_count += 1
+    combined_total_sl_points += math.abs(breakout_trade_points_sl)
+    breakout_sl_count += 1
+    current_sl_streak += 1
+    current_sl_streak_points += math.abs(breakout_trade_points_sl)
+    if current_sl_streak > max_sl_streak
+        max_sl_streak := current_sl_streak
+        max_sl_streak_points := current_sl_streak_points
+
+// TBH Performance Updates
+if tbh_tp_hit or tbh_315_exit
+    points_to_add = tbh_315_exit ? math.abs(tbh_trade_points_tp) : math.abs(tbh_trade_points_tp)
+    is_tp = tbh_315_exit ? (tbh_trade_points_tp > 0) : true
+    
+    array.push(combined_trade_months, month(time))
+    array.push(combined_trade_years, year(time))
+    array.push(combined_trade_was_tp, is_tp)
+    array.push(combined_trade_points, points_to_add)
+    array.push(combined_trade_strategy, "TBH")
+    
+    if is_tp
+        combined_total_tp_count += 1
+        combined_total_tp_points += points_to_add
+        tbh_tp_count += 1
+        current_sl_streak := 0
+        current_sl_streak_points := 0.0
+    else
+        combined_total_sl_count += 1
+        combined_total_sl_points += points_to_add
+        tbh_sl_count += 1
+        current_sl_streak += 1
+        current_sl_streak_points += points_to_add
+        if current_sl_streak > max_sl_streak
+            max_sl_streak := current_sl_streak
+            max_sl_streak_points := current_sl_streak_points
+
+if tbh_sl_hit
+    array.push(combined_trade_months, month(time))
+    array.push(combined_trade_years, year(time))
+    array.push(combined_trade_was_tp, false)
+    array.push(combined_trade_points, math.abs(tbh_trade_points_sl))
+    array.push(combined_trade_strategy, "TBH")
+    
+    combined_total_sl_count += 1
+    combined_total_sl_points += math.abs(tbh_trade_points_sl)
+    tbh_sl_count += 1
+    current_sl_streak += 1
+    current_sl_streak_points += math.abs(tbh_trade_points_sl)
+    if current_sl_streak > max_sl_streak
+        max_sl_streak := current_sl_streak
+        max_sl_streak_points := current_sl_streak_points
+
+// VWAP Performance Updates
+if vwap_tp_hit_alert or vwap_auto_tp_hit_alert or vwap_315_exit
+    points_to_add = vwap_315_exit ? math.abs(vwap_trade_points_tp) : math.abs(vwap_trade_points_tp)
+    is_tp = vwap_315_exit ? (vwap_trade_points_tp > 0) : true
+    
+    array.push(combined_trade_months, month(time))
+    array.push(combined_trade_years, year(time))
+    array.push(combined_trade_was_tp, is_tp)
+    array.push(combined_trade_points, points_to_add)
+    array.push(combined_trade_strategy, "VWAP")
+    
+    if is_tp
+        combined_total_tp_count += 1
+        combined_total_tp_points += points_to_add
+        vwap_tp_count += 1
+        current_sl_streak := 0
+        current_sl_streak_points := 0.0
+    else
+        combined_total_sl_count += 1
+        combined_total_sl_points += points_to_add
+        vwap_sl_count += 1
+        current_sl_streak += 1
+        current_sl_streak_points += points_to_add
+        if current_sl_streak > max_sl_streak
+            max_sl_streak := current_sl_streak
+            max_sl_streak_points := current_sl_streak_points
+
+if vwap_sl_hit_alert
+    array.push(combined_trade_months, month(time))
+    array.push(combined_trade_years, year(time))
+    array.push(combined_trade_was_tp, false)
+    array.push(combined_trade_points, math.abs(vwap_trade_points_sl))
+    array.push(combined_trade_strategy, "VWAP")
+    
+    combined_total_sl_count += 1
+    combined_total_sl_points += math.abs(vwap_trade_points_sl)
+    vwap_sl_count += 1
+    current_sl_streak += 1
+    current_sl_streak_points += math.abs(vwap_trade_points_sl)
+    if current_sl_streak > max_sl_streak
+        max_sl_streak := current_sl_streak
+        max_sl_streak_points := current_sl_streak_points
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// ENHANCED PERFORMANCE TABLE - UPDATED WITH VWAP (4 STRATEGIES)
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+if barstate.islast and show_performance_table
+    current_month = month(time)
+    current_year = year(time)
+    
+    var performanceTable = table.new(getTablePosition(table_position), 15, 15, bgcolor=color.new(color.black, 20), border_width=1)
+    
+    // Header row with 4 strategies - EXPANDED STRUCTURE
+    table.cell(performanceTable, 0, 0, 'Month & Year', text_color=color.white, text_size=size.small, bgcolor=color.new(color.blue, 60))
+    table.cell(performanceTable, 1, 0, 'TP Trades', text_color=color.white, text_size=size.small, bgcolor=color.new(color.green, 60))
+    table.cell(performanceTable, 2, 0, 'SL Trades', text_color=color.white, text_size=size.small, bgcolor=color.new(color.red, 60))
+    table.cell(performanceTable, 3, 0, 'TP Points', text_color=color.white, text_size=size.small, bgcolor=color.new(color.lime, 60))
+    table.cell(performanceTable, 4, 0, 'SL Points', text_color=color.white, text_size=size.small, bgcolor=color.new(color.maroon, 60))
+    table.cell(performanceTable, 5, 0, 'Net Points', text_color=color.white, text_size=size.small, bgcolor=color.new(color.purple, 60))
+    table.cell(performanceTable, 6, 0, 'Win Rate %', text_color=color.white, text_size=size.small, bgcolor=color.new(color.teal, 60))
+    table.cell(performanceTable, 7, 0, 'Profit Factor', text_color=color.white, text_size=size.small, bgcolor=color.new(color.aqua, 60))
+    table.cell(performanceTable, 8, 0, 'PNL (₹)', text_color=color.white, text_size=size.small, bgcolor=color.new(color.yellow, 60))
+    table.cell(performanceTable, 9, 0, 'Max SL Streak', text_color=color.white, text_size=size.small, bgcolor=color.new(color.red, 80))
+    table.cell(performanceTable, 10, 0, 'SL Streak Pts', text_color=color.white, text_size=size.small, bgcolor=color.new(color.maroon, 80))
+    table.cell(performanceTable, 11, 0, 'BB Trades', text_color=color.white, text_size=size.small, bgcolor=color.new(color.blue, 60))
+    table.cell(performanceTable, 12, 0, 'TBH-TRAIL', text_color=color.white, text_size=size.small, bgcolor=color.new(color.lime, 60))
+    table.cell(performanceTable, 13, 0, 'BRK/ATR', text_color=color.white, text_size=size.small, bgcolor=color.new(color.orange, 60))
+    table.cell(performanceTable, 14, 0, 'VWAP', text_color=color.white, text_size=size.small, bgcolor=color.new(color.purple, 60))
+    
+    grand_tp_trades = 0
+    grand_sl_trades = 0
+    grand_tp_points = 0.0
+    grand_sl_points = 0.0
+    
+    // Display last 12 months
+    for i = 0 to 11
+        row = i + 1
+        
+        target_month = ((current_month - 12 + i) % 12)
+        if target_month <= 0
+            target_month := target_month + 12
+        
+        target_year = target_month > current_month ? current_year - 1 : current_year
+        
+        // Count trades for this month/year - FIXED LOGIC
+        month_tp_trades = 0
+        month_sl_trades = 0
+        month_tp_points = 0.0
+        month_sl_points = 0.0
+        month_bb_trades = 0
+        month_tbh_trades = 0
+        month_breakout_trades = 0
+        month_vwap_trades = 0
+        month_max_sl_streak = 0
+        month_sl_streak_points = 0.0
+        
+        // Track consecutive SLs for this month
+        current_month_sl_streak = 0
+        current_month_sl_streak_points = 0.0
+        month_max_sl_streak_points = 0.0
+        
+        // Go through all recorded trades - FIXED
+        if array.size(combined_trade_months) > 0
+            for j = 0 to array.size(combined_trade_months) - 1
+                trade_month = array.get(combined_trade_months, j)
+                trade_year = array.get(combined_trade_years, j)
+                
+                if trade_month == target_month and trade_year == target_year
+                    was_tp = array.get(combined_trade_was_tp, j)
+                    points = array.get(combined_trade_points, j)
+                    strategy = array.get(combined_trade_strategy, j)
+                    
+                    if was_tp
+                        month_tp_trades := month_tp_trades + 1
+                        month_tp_points := month_tp_points + points
+                        // Reset SL streak on TP
+                        current_month_sl_streak := 0
+                        current_month_sl_streak_points := 0.0
+                    else
+                        month_sl_trades := month_sl_trades + 1
+                        month_sl_points := month_sl_points + points
+                        // Continue SL streak
+                        current_month_sl_streak := current_month_sl_streak + 1
+                        current_month_sl_streak_points := current_month_sl_streak_points + points
+                        
+                        // Update max streak for this month
+                        if current_month_sl_streak > month_max_sl_streak
+                            month_max_sl_streak := current_month_sl_streak
+                            month_max_sl_streak_points := current_month_sl_streak_points
+                    
+                    // Count by strategy
+                    if strategy == "BB"
+                        month_bb_trades := month_bb_trades + 1
+                    else if strategy == "TBH"
+                        month_tbh_trades := month_tbh_trades + 1
+                    else if strategy == "BREAKOUT"
+                        month_breakout_trades := month_breakout_trades + 1
+                    else if strategy == "VWAP"
+                        month_vwap_trades := month_vwap_trades + 1
+        
+        // Calculations
+        net_pts = month_tp_points - month_sl_points
+        win_rate = calculateWinRate(month_tp_trades, month_sl_trades)
+        profit_factor = month_sl_points > 0 ? math.round(month_tp_points / month_sl_points, 2) : (month_tp_points > 0 ? 999.99 : 0.0)
+        option_pts = math.round(net_pts * 0.55)
+        pnl = math.round(option_pts * 100)
+        
+        // Update grand totals
+        grand_tp_trades := grand_tp_trades + month_tp_trades
+        grand_sl_trades := grand_sl_trades + month_sl_trades
+        grand_tp_points := grand_tp_points + month_tp_points
+        grand_sl_points := grand_sl_points + month_sl_points
+        
+        month_name_with_year = getMonthNameWithYear(target_month, target_year)
+        
+        // Fill table cells - UPDATED STRUCTURE
+        table.cell(performanceTable, 0, row, month_name_with_year, text_color=color.white, text_size=size.small)
+        table.cell(performanceTable, 1, row, str.tostring(month_tp_trades), text_color=color.white, text_size=size.small)
+        table.cell(performanceTable, 2, row, str.tostring(month_sl_trades), text_color=color.white, text_size=size.small)
+        table.cell(performanceTable, 3, row, str.tostring(math.round(month_tp_points)), text_color=color.white, text_size=size.small)
+        table.cell(performanceTable, 4, row, str.tostring(math.round(month_sl_points)), text_color=color.white, text_size=size.small)
+        table.cell(performanceTable, 5, row, str.tostring(math.round(net_pts)), text_color=color.white, text_size=size.small)
+        table.cell(performanceTable, 6, row, str.tostring(win_rate) + "%", text_color=color.white, text_size=size.small)
+        table.cell(performanceTable, 7, row, str.tostring(profit_factor), text_color=color.white, text_size=size.small)
+        table.cell(performanceTable, 8, row, str.tostring(pnl), text_color=color.white, text_size=size.small)
+        table.cell(performanceTable, 9, row, str.tostring(month_max_sl_streak), text_color=color.white, text_size=size.small)
+        table.cell(performanceTable, 10, row, str.tostring(math.round(month_max_sl_streak_points)), text_color=color.white, text_size=size.small)
+        table.cell(performanceTable, 11, row, str.tostring(month_bb_trades), text_color=color.white, text_size=size.small)
+        table.cell(performanceTable, 12, row, str.tostring(month_tbh_trades), text_color=color.white, text_size=size.small)
+        table.cell(performanceTable, 13, row, str.tostring(month_breakout_trades), text_color=color.white, text_size=size.small)
+        table.cell(performanceTable, 14, row, str.tostring(month_vwap_trades), text_color=color.white, text_size=size.small)
+    
+    // Total row - UPDATED STRUCTURE
+    grand_net_pts = grand_tp_points - grand_sl_points
+    grand_win_rate = calculateWinRate(grand_tp_trades, grand_sl_trades)
+    grand_profit_factor = grand_sl_points > 0 ? math.round(grand_tp_points / grand_sl_points, 2) : (grand_tp_points > 0 ? 999.99 : 0.0)
+    grand_option_pts = math.round(grand_net_pts * 0.55)
+    grand_pnl = math.round(grand_option_pts * 100)
+    
+    table.cell(performanceTable, 0, 13, 'TOTAL', text_color=color.white, text_size=size.small, bgcolor=color.new(color.purple, 60))
+    table.cell(performanceTable, 1, 13, str.tostring(grand_tp_trades), text_color=color.white, text_size=size.small, bgcolor=color.new(color.purple, 60))
+    table.cell(performanceTable, 2, 13, str.tostring(grand_sl_trades), text_color=color.white, text_size=size.small, bgcolor=color.new(color.purple, 60))
+    table.cell(performanceTable, 3, 13, str.tostring(math.round(grand_tp_points)), text_color=color.white, text_size=size.small, bgcolor=color.new(color.purple, 60))
+    table.cell(performanceTable, 4, 13, str.tostring(math.round(grand_sl_points)), text_color=color.white, text_size=size.small, bgcolor=color.new(color.purple, 60))
+    table.cell(performanceTable, 5, 13, str.tostring(math.round(grand_net_pts)), text_color=color.white, text_size=size.small, bgcolor=color.new(color.purple, 60))
+    table.cell(performanceTable, 6, 13, str.tostring(grand_win_rate) + "%", text_color=color.white, text_size=size.small, bgcolor=color.new(color.purple, 60))
+    table.cell(performanceTable, 7, 13, str.tostring(grand_profit_factor), text_color=color.white, text_size=size.small, bgcolor=color.new(color.purple, 60))
+    table.cell(performanceTable, 8, 13, str.tostring(grand_pnl), text_color=color.white, text_size=size.small, bgcolor=color.new(color.purple, 60))
+    table.cell(performanceTable, 9, 13, str.tostring(max_sl_streak), text_color=color.white, text_size=size.small, bgcolor=color.new(color.purple, 60))
+    table.cell(performanceTable, 10, 13, str.tostring(math.round(max_sl_streak_points)), text_color=color.white, text_size=size.small, bgcolor=color.new(color.purple, 60))
+    table.cell(performanceTable, 11, 13, str.tostring(bb_tp_count + bb_sl_count), text_color=color.white, text_size=size.small, bgcolor=color.new(color.purple, 60))
+    table.cell(performanceTable, 12, 13, str.tostring(tbh_tp_count + tbh_sl_count), text_color=color.white, text_size=size.small, bgcolor=color.new(color.purple, 60))
+    table.cell(performanceTable, 13, 13, str.tostring((breakout_tp_count + breakout_sl_count)), text_color=color.white, text_size=size.small, bgcolor=color.new(color.purple, 60))
+    table.cell(performanceTable, 14, 13, str.tostring((vwap_tp_count + vwap_sl_count)), text_color=color.white, text_size=size.small, bgcolor=color.new(color.purple, 60))
+    
+    // Strategy Summary Row - UPDATED WITH VWAP
+    table.cell(performanceTable, 0, 14, 'STRATEGIES', text_color=color.white, text_size=size.small, bgcolor=color.new(color.gray, 60))
+    table.cell(performanceTable, 1, 14, 'BB: ' + str.tostring(bb_tp_count) + '/' + str.tostring(bb_sl_count), text_color=color.white, text_size=size.small, bgcolor=color.new(color.blue, 60))
+    table.cell(performanceTable, 2, 14, 'TBH-TRAIL: ' + str.tostring(tbh_tp_count) + '/' + str.tostring(tbh_sl_count), text_color=color.white, text_size=size.small, bgcolor=color.new(color.lime, 60))
+    table.cell(performanceTable, 3, 14, 'BRK: ' + str.tostring(breakout_tp_count) + '/' + str.tostring(breakout_sl_count), text_color=color.white, text_size=size.small, bgcolor=color.new(color.orange, 60))
+    table.cell(performanceTable, 4, 14, 'VWAP: ' + str.tostring(vwap_tp_count) + '/' + str.tostring(vwap_sl_count), text_color=color.white, text_size=size.small, bgcolor=color.new(color.purple, 60))
+    
+    // Enable/Disable Status - UPDATED WITH VWAP
+    bb_status = enable_bb_strategy ? "ON" : "OFF"
+    tbh_status = enable_tbh_strategy ? "ON" : "OFF"
+    breakout_status = enable_breakout_strategy ? "ON" : "OFF"
+    vwap_status = enable_vwap_strategy ? "ON" : "OFF"
+    
+    table.cell(performanceTable, 5, 14, bb_status, text_color=color.white, text_size=size.small, bgcolor=enable_bb_strategy ? color.new(color.green, 60) : color.new(color.red, 60))
+    table.cell(performanceTable, 6, 14, tbh_status, text_color=color.white, text_size=size.small, bgcolor=enable_tbh_strategy ? color.new(color.green, 60) : color.new(color.red, 60))
+    table.cell(performanceTable, 7, 14, breakout_status, text_color=color.white, text_size=size.small, bgcolor=enable_breakout_strategy ? color.new(color.green, 60) : color.new(color.red, 60))
+    table.cell(performanceTable, 8, 14, vwap_status, text_color=color.white, text_size=size.small, bgcolor=enable_vwap_strategy ? color.new(color.green, 60) : color.new(color.red, 60))
+    table.cell(performanceTable, 9, 14, user_login, text_color=color.white, text_size=size.small, bgcolor=color.new(color.navy, 60))
+    table.cell(performanceTable, 10, 14, 'OVERLAP', text_color=color.white, text_size=size.small, bgcolor=enable_overlap_filter ? color.new(color.green, 60) : color.new(color.red, 60))
+    table.cell(performanceTable, 11, 14, '3:15 EXIT', text_color=color.white, text_size=size.small, bgcolor=enable_315_exit ? color.new(color.green, 60) : color.new(color.red, 60))
+    table.cell(performanceTable, 12, 14, 'PURE-TRAIL', text_color=color.white, text_size=size.small, bgcolor=color.new(color.purple, 60))
+    table.cell(performanceTable, 13, 14, '+VWAP', text_color=color.white, text_size=size.small, bgcolor=color.new(color.purple, 60))
+    table.cell(performanceTable, 14, 14, 'v16.0-VWAP', text_color=color.white, text_size=size.small, bgcolor=color.new(color.purple, 60))
+    
+// ═══════════════════════════════════════════════════════════════════════════════════
+// ENHANCED STATUS TABLE - UPDATED FOR 4 STRATEGIES INCLUDING VWAP
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+var statusTable = table.new(position.top_right, 2, 18, bgcolor=color.new(color.black, 20), border_width=2)
+if barstate.islast
+    table.cell(statusTable, 0, 0, "Parameter", text_color=color.white, bgcolor=color.new(color.blue, 60))
+    table.cell(statusTable, 1, 0, "Value", text_color=color.white, bgcolor=color.new(color.blue, 60))
+    
+    // Active trades status
+    active_trades = ""
+    if bb_in_trade
+        active_trades := active_trades + "BB:" + bb_trade_type + " "
+    if breakout_in_trade
+        active_trades := active_trades + "BRK:" + breakout_trade_type + " "
+    if tbh_in_trade
+        active_trades := active_trades + "TBH-TRAIL:" + tbh_trade_type + " "
+    if vwap_in_trade
+        active_trades := active_trades + "VWAP:" + vwap_trade_type + " "
+    
+    if active_trades == ""
+        active_trades := "NONE"
+    
+    table.cell(statusTable, 0, 1, "Active Trades", text_color=color.white, bgcolor=color.new(color.green, 40))
+    table.cell(statusTable, 1, 1, active_trades, text_color=color.white, bgcolor=color.new(color.green, 40))
+    
+    // Strategy status
+    strategies_enabled = ""
+    if enable_bb_strategy
+        strategies_enabled := strategies_enabled + "BB "
+    if enable_breakout_strategy
+        strategies_enabled := strategies_enabled + "BRK "
+    if enable_tbh_strategy
+        strategies_enabled := strategies_enabled + "TBH-TRAIL "
+    if enable_vwap_strategy
+        strategies_enabled := strategies_enabled + "VWAP "
+    
+    table.cell(statusTable, 0, 2, "Enabled", text_color=color.white, bgcolor=color.new(color.blue, 40))
+    table.cell(statusTable, 1, 2, strategies_enabled, text_color=color.white, bgcolor=color.new(color.blue, 40))
+    
+    // ENHANCED OVERLAP FILTER STATUS
+    table.cell(statusTable, 0, 3, "Overlap Filter", text_color=color.white, bgcolor=color.new(color.purple, 40))
+    overlap_status = enable_overlap_filter ? "ON" : "OFF"
+    table.cell(statusTable, 1, 3, overlap_status, text_color=color.white, bgcolor=enable_overlap_filter ? color.new(color.green, 40) : color.new(color.red, 40))
+    
+    table.cell(statusTable, 0, 4, "Any Trade Active", text_color=color.white, bgcolor=color.new(color.orange, 40))
+    active_status = any_strategy_active ? "YES" : "NO"
+    active_color = any_strategy_active ? color.new(color.red, 40) : color.new(color.green, 40)
+    table.cell(statusTable, 1, 4, active_status, text_color=color.white, bgcolor=active_color)
+    
+    table.cell(statusTable, 0, 5, "3:15 Exit", text_color=color.white, bgcolor=color.new(color.orange, 40))
+    exit_315_status = enable_315_exit ? "ON" : "OFF"
+    table.cell(statusTable, 1, 5, exit_315_status, text_color=color.white, bgcolor=enable_315_exit ? color.new(color.green, 40) : color.new(color.red, 40))
+    
+    // Signal overlap tracking
+    table.cell(statusTable, 0, 6, "Signals Count", text_color=color.white, bgcolor=color.new(color.yellow, 40))
+    table.cell(statusTable, 1, 6, str.tostring(signals_count), text_color=color.white, bgcolor=signals_count > 1 ? color.new(color.red, 40) : color.new(color.green, 40))
+    
+    // Overlap blocking status
+    table.cell(statusTable, 0, 7, "Overlap Blocks", text_color=color.white, bgcolor=color.new(color.red, 40))
+    blocks_status = overlap_filter_blocks_all ? "YES" : "NO"
+    blocks_color = overlap_filter_blocks_all ? color.new(color.red, 40) : color.new(color.green, 40)
+    table.cell(statusTable, 1, 7, blocks_status, text_color=color.white, bgcolor=blocks_color)
+    
+    // TBH Supertrend Activation Status
+    table.cell(statusTable, 0, 8, "TBH ST Activated", text_color=color.white, bgcolor=color.new(color.lime, 40))
+    tbh_activation_status = tbh_in_trade and tbh_supertrend_activated ? "YES" : "NO"
+    tbh_activation_color = tbh_in_trade and tbh_supertrend_activated ? color.new(color.green, 40) : color.new(color.gray, 40)
+    table.cell(statusTable, 1, 8, tbh_activation_status, text_color=color.white, bgcolor=tbh_activation_color)
+    
+    // TBH Current SL vs Initial SL
+    table.cell(statusTable, 0, 9, "TBH Current SL", text_color=color.white, bgcolor=color.new(color.lime, 40))
+    if tbh_in_trade
+        sl_color = tbh_supertrend_activated ? color.new(color.green, 40) : color.new(color.red, 40)
+        table.cell(statusTable, 1, 9, str.tostring(tbh_current_sl, "#.##"), text_color=color.white, bgcolor=sl_color)
+    else
+        table.cell(statusTable, 1, 9, "N/A", text_color=color.white, bgcolor=color.new(color.gray, 40))
+    
+    // TBH Initial SL
+    table.cell(statusTable, 0, 10, "TBH Initial SL", text_color=color.white, bgcolor=color.new(color.orange, 40))
+    if tbh_in_trade
+        table.cell(statusTable, 1, 10, str.tostring(tbh_initial_sl, "#.##"), text_color=color.white, bgcolor=color.new(color.gray, 40))
+    else
+        table.cell(statusTable, 1, 10, "N/A", text_color=color.white, bgcolor=color.new(color.gray, 40))
+    
+    // TBH Supertrend Current Value
+    table.cell(statusTable, 0, 11, "TBH Supertrend", text_color=color.white, bgcolor=color.new(color.lime, 40))
+    st_color = tbh_direction == -1 ? color.new(color.green, 40) : color.new(color.red, 40)
+    table.cell(statusTable, 1, 11, str.tostring(tbh_supertrend, "#.##"), text_color=color.white, bgcolor=st_color)
+
+    table.cell(statusTable, 0, 12, "TBH Fib 0 (0.382)", text_color=color.white, bgcolor=color.new(color.red, 40))
+    table.cell(statusTable, 1, 12, str.tostring(tbh_fib_level_0, "#.##"), text_color=color.white, bgcolor=color.new(color.gray, 40))
+
+    table.cell(statusTable, 0, 13, "TBH Fib 1 (0.618)", text_color=color.white, bgcolor=color.new(color.green, 40))
+    table.cell(statusTable, 1, 13, str.tostring(tbh_fib_level_1, "#.##"), text_color=color.white, bgcolor=color.new(color.gray, 40))
+    
+    // VWAP Information
+    table.cell(statusTable, 0, 14, "VWAP Current", text_color=color.white, bgcolor=color.new(color.purple, 40))
+    vwap_text = not na(vwapValue) ? str.tostring(vwapValue, "#.##") : "N/A"
+    table.cell(statusTable, 1, 14, vwap_text, text_color=color.white, bgcolor=color.new(color.gray, 40))
+    
+    table.cell(statusTable, 0, 15, "VWAP vs Price", text_color=color.white, bgcolor=color.new(color.purple, 40))
+    if not na(vwapValue)
+        price_diff = close - vwapValue
+        vwap_relation = price_diff > 0 ? "ABOVE +" + str.tostring(math.round(price_diff, 2)) : "BELOW " + str.tostring(math.round(price_diff, 2))
+        vwap_relation_color = price_diff > 0 ? color.new(color.green, 40) : color.new(color.red, 40)
+        table.cell(statusTable, 1, 15, vwap_relation, text_color=color.white, bgcolor=vwap_relation_color)
+    else
+        table.cell(statusTable, 1, 15, "N/A", text_color=color.white, bgcolor=color.new(color.gray, 40))
+    
+    // SL Streak status
+    table.cell(statusTable, 0, 16, "SL Streak", text_color=color.white, bgcolor=color.new(color.red, 40))
+    table.cell(statusTable, 1, 16, str.tostring(current_sl_streak) + "/" + str.tostring(max_sl_streak), text_color=color.white, bgcolor=color.new(color.gray, 40))
+    
+    table.cell(statusTable, 0, 17, "User", text_color=color.white, bgcolor=color.new(color.navy, 40))
+    table.cell(statusTable, 1, 17, user_login, text_color=color.white, bgcolor=color.new(color.gray, 40))
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// VISUAL PLOTTING - UPDATED FOR 4 STRATEGIES INCLUDING VWAP
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+// Plot VWAP
+plot(show_vwap_line and enable_vwap_strategy ? vwapValue : na, title="VWAP", color=color.purple, linewidth=2)
+
+// Plot Supertrend lines only when TBH is enabled and display is on
+plot(show_tbh_supertrend and enable_tbh_strategy ? tbh_upperband : na, title="TBH Upper Band", color=color.red, linewidth=2)
+plot(show_tbh_supertrend and enable_tbh_strategy ? tbh_lowerband : na, title="TBH Lower Band", color=color.green, linewidth=2)
+
+// Plot active supertrend (thicker line) - Green for buy trail, Red for sell trail
+supertrend_color = tbh_direction == -1 ? color.green : color.red
+plot(show_tbh_supertrend and enable_tbh_strategy ? tbh_supertrend : na, title="TBH Active Supertrend", color=supertrend_color, linewidth=3)
+
+// Plot ACTIVE stop loss levels ONLY when there are active trades
+plot(bb_in_trade and enable_bb_strategy ? bb_stop_loss : na, title="BB Stop Loss Level", color=color.red, linewidth=2, style=plot.style_linebr)
+plot(breakout_in_trade and enable_breakout_strategy ? breakout_stop_loss : na, title="Breakout Stop Loss Level", color=color.orange, linewidth=2, style=plot.style_linebr)
+plot(vwap_in_trade and enable_vwap_strategy ? vwap_stop_loss : na, title="VWAP Stop Loss Level", color=color.purple, linewidth=2, style=plot.style_linebr)
+
+// Plot TBH Current SL and TP based on mode
+tbh_sl_color = if tbh_in_trade
+    if tbh_using_fixed_tp
+        color.orange  // Fixed TP mode uses orange SL
+    else
+        tbh_supertrend_activated ? color.lime : color.red  // Trailing mode colors
+else
+    na
+
+plot(tbh_in_trade and enable_tbh_strategy ? tbh_current_sl : na, color=tbh_sl_color, linewidth=2, title="TBH Current SL", style=plot.style_linebr)
+
+// Plot TBH Take Profit (only in Fixed TP mode)
+plot(tbh_in_trade and enable_tbh_strategy and tbh_using_fixed_tp ? tbh_take_profit : na, color=color.blue, linewidth=2, title="TBH Fixed TP", style=plot.style_linebr)
+
+// Plot entry signals for all strategies
+plotshape(bb_sell_entry and show_bb_signals, title='BB Sell Entry', style=shape.labeldown, location=location.abovebar, color=color.red, text='BB\nSELL', textcolor=color.white, size=size.small)
+plotshape(bb_buy_entry and show_bb_signals, title='BB Buy Entry', style=shape.labelup, location=location.belowbar, color=color.green, text='BB\nBUY', textcolor=color.white, size=size.small)
+
+plotshape(bullish_breakout, style=shape.labelup, color=color.green, location=location.belowbar, text="BREAKOUT\nBUY", size=size.small)
+plotshape(bearish_breakdown, style=shape.labeldown, color=color.red, location=location.abovebar, text="BREAKDOWN\nSELL", size=size.small)
+
+plotshape(tbh_buy_condition, title="TBH Buy Signal", location=location.belowbar, color=color.lime, style=shape.labelup, text="TBH-TRAIL\nBUY", size=size.small)
+plotshape(tbh_sell_condition, title="TBH Sell Signal", location=location.abovebar, color=color.fuchsia, style=shape.labeldown, text="TBH-TRAIL\nSELL", size=size.small)
+
+plotshape(vwap_buy_signal, title='VWAP Buy Signal', style=shape.labelup, location=location.belowbar, color=color.purple, text='VWAP\nBUY', textcolor=color.white, size=size.small)
+plotshape(vwap_sell_signal, title='VWAP Sell Signal', style=shape.labeldown, location=location.abovebar, color=color.maroon, text='VWAP\nSELL', textcolor=color.white, size=size.small)
+
+// ENHANCED OVERLAP WARNING SIGNALS
+overlap_detected = enable_overlap_filter and signals_count > 1 and not any_strategy_active
+active_trade_blocks = enable_overlap_filter and any_strategy_active and (bb_has_signal or breakout_has_signal or tbh_has_signal or vwap_has_signal)
+
+plotshape(overlap_detected, title='Same Bar Multiple Signals', style=shape.xcross, location=location.top, color=color.yellow, text='SAME BAR\nOVERLAP', textcolor=color.black, size=size.small)
+plotshape(active_trade_blocks, title='Active Trade Blocks Signal', style=shape.xcross, location=location.bottom, color=color.orange, text='ACTIVE TRADE\nBLOCKS', textcolor=color.white, size=size.small)
+
+// Calculate ATR for proper spacing
+atr_value = ta.atr(20) * 2
+
+// BB TP/SL Labels (unchanged)
+if show_bb_tp_sl_labels
+    if bb_tp_hit or bb_315_exit
+        actual_tp_points = bb_315_exit ? math.abs(bb_trade_points_tp) : math.abs(bb_trade_points_tp)
+        label_y = bb_trade_type == "BUY" ? high + atr_value : low - atr_value
+        label_style = bb_trade_type == "BUY" ? label.style_label_down : label.style_label_up
+        label_text = bb_315_exit ? "🕒 BB 3:15 EXIT " : "✅ BB TP +"
+        label_text := label_text + str.tostring(math.round(actual_tp_points, 1)) + " pts"
+        
+        label.new(x=bar_index, y=label_y, text=label_text, 
+                  style=label_style, color=color.new(color.green, 0), textcolor=color.white, size=size.small)
+
+    if bb_sl_hit
+        actual_sl_points = math.abs(bb_trade_points_sl)
+        label_y = bb_trade_type == "BUY" ? low - atr_value : high + atr_value
+        label_style = bb_trade_type == "BUY" ? label.style_label_up : label.style_label_down
+        label_text = "❌ BB SL -" + str.tostring(math.round(actual_sl_points, 1)) + " pts"
+        
+        if bb_sl_type == "Smart SL (Min Risk)"
+            label_text := label_text + "\n" + bb_sl_method
+        
+        label.new(x=bar_index, y=label_y, text=label_text, 
+                  style=label_style, color=color.new(color.red, 0), textcolor=color.white, size=size.small)
+
+// Breakout TP/SL Labels (unchanged)
+if breakout_auto_tp_hit_alert
+    actual_auto_tp_points = math.abs(breakout_trade_points_tp)
+    label_y = breakout_trade_type == "BUY" ? high + atr_value : low - atr_value
+    label_style = breakout_trade_type == "BUY" ? label.style_label_down : label.style_label_up
+    
+    label.new(x=bar_index, y=label_y, text="🕒 BREAKOUT AUTO TP +" + str.tostring(math.round(actual_auto_tp_points, 1)) + " pts", 
+              style=label_style, color=color.new(color.orange, 0), textcolor=color.white, size=size.small)
+
+if breakout_tp_hit_alert
+    actual_tp_points = math.abs(breakout_trade_points_tp)
+    label_y = breakout_trade_type == "BUY" ? high + atr_value : low - atr_value
+    label_style = breakout_trade_type == "BUY" ? label.style_label_down : label.style_label_up
+    
+    label.new(x=bar_index, y=label_y, text="✅ BREAKOUT TP +" + str.tostring(math.round(actual_tp_points, 1)) + " pts", 
+              style=label_style, color=color.new(color.green, 0), textcolor=color.white, size=size.small)
+
+if breakout_sl_hit_alert
+    actual_sl_points = math.abs(breakout_trade_points_sl)
+    label_y = breakout_trade_type == "BUY" ? low - atr_value : high + atr_value
+    label_style = breakout_trade_type == "BUY" ? label.style_label_up : label.style_label_down
+    
+    label.new(x=bar_index, y=label_y, text="❌ BREAKOUT SL -" + str.tostring(math.round(actual_sl_points, 1)) + " pts", 
+              style=label_style, color=color.new(color.red, 0), textcolor=color.white, size=size.small)
+
+if breakout_315_exit
+    actual_315_points = math.abs(breakout_trade_points_tp)
+    label_y = breakout_trade_type == "BUY" ? high + atr_value : low - atr_value
+    label_style = breakout_trade_type == "BUY" ? label.style_label_down : label.style_label_up
+    label_text = breakout_trade_points_tp > 0 ? "🕒 BREAKOUT 3:15 TP +" : "🕒 BREAKOUT 3:15 SL -"
+    
+    label.new(x=bar_index, y=label_y, text=label_text + str.tostring(math.round(actual_315_points, 1)) + " pts", 
+              style=label_style, color=color.new(color.orange, 0), textcolor=color.white, size=size.small)
+
+// TBH TP/SL Labels (unchanged)
+if tbh_tp_hit
+    actual_tp_points = math.abs(tbh_trade_points_tp)
+    label_y = tbh_trade_type == "BUY" ? high + atr_value : low - atr_value
+    label_style = tbh_trade_type == "BUY" ? label.style_label_down : label.style_label_up
+    exit_method_text = tbh_supertrend_activated ? " (ST-Trail)" : " (Initial)"
+    
+    label.new(x=bar_index, y=label_y, text="✅ TBH TRAIL TP +" + str.tostring(math.round(actual_tp_points, 1)) + " pts" + exit_method_text, 
+              style=label_style, color=color.new(color.lime, 0), textcolor=color.black, size=size.small)
+
+if tbh_sl_hit
+    actual_sl_points = math.abs(tbh_trade_points_sl)
+    label_y = tbh_trade_type == "BUY" ? low - atr_value : high + atr_value
+    label_style = tbh_trade_type == "BUY" ? label.style_label_up : label.style_label_down
+    exit_method_text = tbh_supertrend_activated ? " (ST-Trail)" : " (Initial-SL)"
+    
+    label.new(x=bar_index, y=label_y, text="❌ TBH TRAIL SL -" + str.tostring(math.round(actual_sl_points, 1)) + " pts" + exit_method_text, 
+              style=label_style, color=color.new(color.fuchsia, 0), textcolor=color.white, size=size.small)
+
+if tbh_315_exit
+    actual_315_points = math.abs(tbh_trade_points_tp)
+    label_y = tbh_trade_type == "BUY" ? high + atr_value : low - atr_value
+    label_style = tbh_trade_type == "BUY" ? label.style_label_down : label.style_label_up
+    label_text = tbh_trade_points_tp > 0 ? "🕒 TBH 3:15 TP +" : "🕒 TBH 3:15 SL -"
+    
+    label.new(x=bar_index, y=label_y, text=label_text + str.tostring(math.round(actual_315_points, 1)) + " pts", 
+              style=label_style, color=color.new(color.orange, 0), textcolor=color.white, size=size.small)
+
+// VWAP TP/SL Labels - NEW
+if vwap_tp_hit_alert or vwap_auto_tp_hit_alert
+    actual_tp_points = vwap_auto_tp_hit_alert ? math.abs(vwap_trade_points_tp) : math.abs(vwap_trade_points_tp)
+    label_y = vwap_trade_type == "BUY" ? high + atr_value : low - atr_value
+    label_style = vwap_trade_type == "BUY" ? label.style_label_down : label.style_label_up
+    label_text = vwap_auto_tp_hit_alert ? "🕒 VWAP AUTO TP +" : "✅ VWAP TP +"
+    
+    label.new(x=bar_index, y=label_y, text=label_text + str.tostring(math.round(actual_tp_points, 1)) + " pts", 
+              style=label_style, color=color.new(color.purple, 0), textcolor=color.white, size=size.small)
+
+if vwap_sl_hit_alert
+    actual_sl_points = math.abs(vwap_trade_points_sl)
+    label_y = vwap_trade_type == "BUY" ? low - atr_value : high + atr_value
+    label_style = vwap_trade_type == "BUY" ? label.style_label_up : label.style_label_down
+    
+    label.new(x=bar_index, y=label_y, text="❌ VWAP SL -" + str.tostring(math.round(actual_sl_points, 1)) + " pts", 
+              style=label_style, color=color.new(color.maroon, 0), textcolor=color.white, size=size.small)
+
+if vwap_315_exit
+    actual_315_points = math.abs(vwap_trade_points_tp)
+    label_y = vwap_trade_type == "BUY" ? high + atr_value : low - atr_value
+    label_style = vwap_trade_type == "BUY" ? label.style_label_down : label.style_label_up
+    label_text = vwap_trade_points_tp > 0 ? "🕒 VWAP 3:15 TP +" : "🕒 VWAP 3:15 SL -"
+    
+    label.new(x=bar_index, y=label_y, text=label_text + str.tostring(math.round(actual_315_points, 1)) + " pts", 
+              style=label_style, color=color.new(color.orange, 0), textcolor=color.white, size=size.small)
+
+// Highlight when TBH Supertrend trailing is active
+bgcolor(tbh_in_trade and tbh_supertrend_activated ? color.new(color.yellow, 90) : na, title="TBH Supertrend Trailing Active")
+
+// Reset flags after processing
+if bb_tp_hit
+    bb_tp_hit := false
+if bb_sl_hit
+    bb_sl_hit := false
+if bb_315_exit
+    bb_315_exit := false
+if breakout_tp_hit_alert
+    breakout_tp_hit_alert := false
+if breakout_sl_hit_alert
+    breakout_sl_hit_alert := false
+if breakout_auto_tp_hit_alert
+    breakout_auto_tp_hit_alert := false
+if breakout_315_exit
+    breakout_315_exit := false
+if tbh_tp_hit
+    tbh_tp_hit := false
+if tbh_sl_hit
+    tbh_sl_hit := false
+if tbh_315_exit
+    tbh_315_exit := false
+if vwap_tp_hit_alert
+    vwap_tp_hit_alert := false
+if vwap_sl_hit_alert
+    vwap_sl_hit_alert := false
+if vwap_auto_tp_hit_alert
+    vwap_auto_tp_hit_alert := false
+if vwap_315_exit
+    vwap_315_exit := false
+
+// Additional visual plots for clean display
+// Plot Bollinger Bands only when enabled
+plot(show_bb_lines and enable_bb_strategy ? bb_upper : na, title="BB Upper", color=color.blue, linewidth=1)
+plot(show_bb_lines and enable_bb_strategy ? bb_lower : na, title="BB Lower", color=color.blue, linewidth=1)
+plot(show_bb_lines and enable_bb_strategy ? bb_basis : na, title="BB Basis", color=color.gray, linewidth=1)
+
+// Plot Fibonacci levels only when enabled
+plot(show_tbh_fibs and enable_tbh_strategy ? tbh_fib_level_0 : na, title="TBH Fib 0.382", color=color.red, linewidth=1, style=plot.style_circles)
+plot(show_tbh_fibs and enable_tbh_strategy ? tbh_fib_level_1 : na, title="TBH Fib 0.618", color=color.green, linewidth=1, style=plot.style_circles)
+
+// Plot Breakout ATR Trail - Only when active breakout trade or enabled display
+show_breakout_trail = (breakout_in_trade) or enable_breakout_strategy
+plot(show_breakout_trail and enable_breakout_strategy ? TS : na, color=Color, linewidth=3, title='Breakout ATR Trailing Stoploss')
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// ENHANCED ALERTS SYSTEM - UPDATED FOR 4 STRATEGIES INCLUDING VWAP
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+// BB Alerts (unchanged)
+if bb_enable_alerts and enable_bb_strategy
+    if alert_above_upper
+        alert("BB ALERT ABOVE UPPER BAND: Waiting for reversal SELL entry below " + str.tostring(bb_alert_candle_low, "#.##") + " | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
+    
+    if alert_below_lower
+        alert("BB ALERT BELOW LOWER BAND: Waiting for reversal BUY entry above " + str.tostring(bb_alert_candle_high, "#.##") + " | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
+    
+    if bb_sell_entry
+        risk_points = bb_entry_price - bb_stop_loss
+        alert("BB SELL ENTRY: " + str.tostring(close, "#.##") + " | SL: " + str.tostring(bb_stop_loss, "#.##") + " | Risk: " + str.tostring(math.round(risk_points, 1)) + "pts | Method: " + bb_sl_method + " | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
+    
+    if bb_buy_entry
+        risk_points = bb_stop_loss - bb_entry_price
+        alert("BB BUY ENTRY: " + str.tostring(close, "#.##") + " | SL: " + str.tostring(bb_stop_loss, "#.##") + " | Risk: " + str.tostring(math.round(risk_points, 1)) + "pts | Method: " + bb_sl_method + " | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
+    
+    if bb_tp_hit
+        alert("BB TAKE PROFIT HIT: +" + str.tostring(math.abs(bb_trade_points_tp), "#.##") + " points profit | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
+    
+    if bb_sl_hit
+        alert("BB STOP LOSS HIT: -" + str.tostring(math.abs(bb_trade_points_sl), "#.##") + " points loss | Method: " + bb_sl_method + " | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
+    
+    if bb_315_exit
+        result_msg = bb_trade_points_tp > 0 ? "profit" : "loss"
+        alert("BB 3:15 PM AUTO EXIT: " + str.tostring(math.abs(bb_trade_points_tp), "#.##") + " points " + result_msg + " | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
+
+// Breakout Alerts (unchanged)
+if breakout_enable_alerts and enable_breakout_strategy
+    if bullish_breakout
+        alert("BREAKOUT BUY SIGNAL: Position opened at " + str.tostring(close, "#.##") + " | SL: " + str.tostring(breakout_stop_loss, "#.##") + " | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
+    
+    if bearish_breakdown
+        alert("BREAKOUT SELL SIGNAL: Position opened at " + str.tostring(close, "#.##") + " | SL: " + str.tostring(breakout_stop_loss, "#.##") + " | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
+    
+    if breakout_tp_hit_alert or breakout_auto_tp_hit_alert
+        alert("BREAKOUT TAKE PROFIT: Position closed with profit at " + str.tostring(close, "#.##") + " | Points: +" + str.tostring(math.abs(breakout_trade_points_tp), "#.##") + " | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
+    
+    if breakout_sl_hit_alert
+        alert("BREAKOUT STOP LOSS: Position closed with loss at " + str.tostring(close, "#.##") + " | Points: -" + str.tostring(math.abs(breakout_trade_points_sl), "#.##") + " | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
+    
+    if breakout_315_exit
+        result_msg = breakout_trade_points_tp > 0 ? "profit" : "loss"
+        alert("BREAKOUT 3:15 PM AUTO EXIT: " + str.tostring(math.abs(breakout_trade_points_tp), "#.##") + " points " + result_msg + " | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
+
+// TBH Alerts (unchanged)
+if tbh_enable_alerts and enable_tbh_strategy
+    if tbh_buy_condition
+        candle_info = tbh_use_candle_color ? " on GREEN candle" : ""
+        
+        enhanced_info = ""
+        if tbh_use_enhanced_entry
+            prev_was_green = close[1] > open[1]
+            buffer_points = tbh_enhanced_entry_buffer
+            if prev_was_green
+                target_level = close[1] + buffer_points
+                actual_diff = close - close[1]
+                enhanced_info := " (Close ≥ Prev Close + " + str.tostring(buffer_points, "#.#") + "pts: " + str.tostring(close, "#.##") + " ≥ " + str.tostring(target_level, "#.##") + ", diff: +" + str.tostring(actual_diff, "#.#") + "pts)"
+            else
+                target_level = open[1] + buffer_points
+                actual_diff = close - open[1]
+                enhanced_info := " (Close ≥ Prev Open + " + str.tostring(buffer_points, "#.#") + "pts: " + str.tostring(close, "#.##") + " ≥ " + str.tostring(target_level, "#.##") + ", diff: +" + str.tostring(actual_diff, "#.#") + "pts)"
+        
+        tp_mode_info = tbh_tp_mode == "Fixed TP" ? " | Fixed TP: " + str.tostring(tbh_entry_price + tbh_fixed_tp_points, "#.##") : " | PURE TRAILING MODE"
+        sl_method_info = " | Initial SL: " + tbh_initial_sl_type + " (" + str.tostring(tbh_initial_sl, "#.##") + ") | ST: " + str.tostring(tbh_supertrend, "#.##") + tp_mode_info
+        
+        alert("TBH-" + tbh_tp_mode + " BUY SIGNAL: RSI crossed above oversold (" + str.tostring(tbh_rsi_oversold) + ") and price above Fib 0.618" + candle_info + enhanced_info + sl_method_info + " | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
+
+    if tbh_sell_condition
+        candle_info = tbh_use_candle_color ? " on RED candle" : ""
+        
+        enhanced_info = ""
+        if tbh_use_enhanced_entry
+            prev_was_green = close[1] > open[1]
+            buffer_points = tbh_enhanced_entry_buffer
+            if prev_was_green
+                target_level = open[1] - buffer_points
+                actual_diff = open[1] - close
+                enhanced_info := " (Close ≤ Prev Open - " + str.tostring(buffer_points, "#.#") + "pts: " + str.tostring(close, "#.##") + " ≤ " + str.tostring(target_level, "#.##") + ", diff: -" + str.tostring(actual_diff, "#.#") + "pts)"
+            else
+                target_level = close[1] - buffer_points
+                actual_diff = close[1] - close
+                enhanced_info := " (Close ≤ Prev Close - " + str.tostring(buffer_points, "#.#") + "pts: " + str.tostring(close, "#.##") + " ≤ " + str.tostring(target_level, "#.##") + ", diff: -" + str.tostring(actual_diff, "#.#") + "pts)"
+        
+        sl_method_info = " | Initial SL: " + tbh_initial_sl_type + " (" + str.tostring(tbh_initial_sl, "#.##") + ") | ST: " + str.tostring(tbh_supertrend, "#.##") + " | NO FIXED TP - PURE TRAIL"
+        
+        alert("TBH-TRAIL SELL SIGNAL: RSI crossed below overbought (" + str.tostring(tbh_rsi_overbought) + ") and price below Fib 0.382" + candle_info + enhanced_info + sl_method_info + " | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
+
+    if tbh_tp_hit
+        exit_method = tbh_supertrend_activated ? "Supertrend trailing signal" : "Initial SL method"
+        alert("TBH-TRAIL TAKE PROFIT: " + exit_method + " exit with profit +" + str.tostring(math.abs(tbh_trade_points_tp), "#.##") + " points | Final ST: " + str.tostring(tbh_supertrend, "#.##") + " | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
+
+    if tbh_sl_hit
+        exit_method = tbh_supertrend_activated ? "Supertrend trailing reversal" : tbh_initial_sl_type
+        alert("TBH-TRAIL STOP LOSS: " + exit_method + " SL hit with loss -" + str.tostring(math.abs(tbh_trade_points_sl), "#.##") + " points | Final ST: " + str.tostring(tbh_supertrend, "#.##") + " | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
+    
+    if tbh_315_exit
+        result_msg = tbh_trade_points_tp > 0 ? "profit" : "loss"
+        alert("TBH-TRAIL 3:15 PM AUTO EXIT: " + str.tostring(math.abs(tbh_trade_points_tp), "#.##") + " points " + result_msg + " | ST: " + str.tostring(tbh_supertrend, "#.##") + " | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
+
+    if tbh_in_trade and tbh_supertrend_activated and not tbh_supertrend_activated[1]
+        alert("TBH-TRAIL SUPERTREND ACTIVATED: Supertrend now controls trailing SL | ST Level: " + str.tostring(tbh_supertrend, "#.##") + " | Previous Initial SL: " + str.tostring(tbh_initial_sl, "#.##") + " | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
+
+// VWAP Alerts - NEW
+if vwap_enable_alerts and enable_vwap_strategy
+    if vwap_buy_signal
+        adx_info = vwap_enable_adx_filter ? " | ADX: " + str.tostring(math.round(vwap_adx_value, 2)) + " (>" + str.tostring(vwap_adx_threshold) + ")" : ""
+        vol_info = vwap_enable_volume_filter ? " | Vol: " + str.tostring(math.round(volume/vwap_volume_ema, 2)) + "x EMA" : ""
+        mode_info = " | Mode: " + vwap_crossover_mode
+        alert("VWAP BUY SIGNAL: " + vwap_crossover_mode + " entry at " + str.tostring(close, "#.##") + " | Trail SL: " + str.tostring(TS, "#.##") + adx_info + vol_info + mode_info + " | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
+    
+    if vwap_sell_signal
+        adx_info = vwap_enable_adx_filter ? " | ADX: " + str.tostring(math.round(vwap_adx_value, 2)) + " (>" + str.tostring(vwap_adx_threshold) + ")" : ""
+        vol_info = vwap_enable_volume_filter ? " | Vol: " + str.tostring(math.round(volume/vwap_volume_ema, 2)) + "x EMA" : ""
+        mode_info = " | Mode: " + vwap_crossover_mode
+        alert("VWAP SELL SIGNAL: " + vwap_crossover_mode + " entry at " + str.tostring(close, "#.##") + " | Trail SL: " + str.tostring(TS, "#.##") + adx_info + vol_info + mode_info + " | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
+    
+    if vwap_tp_hit_alert or vwap_auto_tp_hit_alert
+        alert("VWAP TAKE PROFIT: Position closed with profit at " + str.tostring(close, "#.##") + " | Points: +" + str.tostring(math.abs(vwap_trade_points_tp), "#.##") + " | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
+    
+    if vwap_sl_hit_alert
+        alert("VWAP STOP LOSS: Position closed with loss at " + str.tostring(close, "#.##") + " | Points: -" + str.tostring(math.abs(vwap_trade_points_sl), "#.##") + " | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
+    
+    if vwap_315_exit
+        result_msg = vwap_trade_points_tp > 0 ? "profit" : "loss"
+        alert("VWAP 3:15 PM AUTO EXIT: " + str.tostring(math.abs(vwap_trade_points_tp), "#.##") + " points " + result_msg + " | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
+
+// Enhanced Overlap Filter Alerts (updated for 4 strategies)
+if overlap_detected
+    alert("SAME BAR OVERLAP: Multiple strategies signaled, priority given to TBH-TRAIL>VWAP>Breakout>BB | Signals: " + str.tostring(signals_count) + " | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
+
+if active_trade_blocks
+    current_active = any_strategy_active ? (bb_in_trade ? "BB " : "") + (breakout_in_trade ? "BREAKOUT " : "") + (tbh_in_trade ? "TBH-TRAIL " : "") + (vwap_in_trade ? "VWAP " : "") : "NONE"
+    alert("ACTIVE TRADE BLOCKS NEW SIGNAL: Current active: " + current_active + "| Blocked signals: " + str.tostring(signals_count) + " | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
+
+// Entry Blocking Alert
+if isEntryBlocked() and (bb_has_signal or breakout_has_signal or tbh_has_signal or vwap_has_signal)
+    alert("ENTRY BLOCKED: No new entries allowed after 3:15 PM | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
+
+// Alert Conditions for all 4 strategies
+alertcondition(alert_above_upper and enable_bb_strategy, 'BB Alert Above Upper Band', 'BB Alert Candle Above Upper Band')
+alertcondition(alert_below_lower and enable_bb_strategy, 'BB Alert Below Lower Band', 'BB Alert Candle Below Lower Band')
+alertcondition(bb_sell_entry, 'BB Sell Entry Signal', 'BB Reversal SELL Entry')
+alertcondition(bb_buy_entry, 'BB Buy Entry Signal', 'BB Reversal BUY Entry')
+alertcondition(bb_tp_hit, 'BB Take Profit Hit', 'BB Take Profit Hit')
+alertcondition(bb_sl_hit, 'BB Stop Loss Hit', 'BB Stop Loss Hit')
+
+alertcondition(bullish_breakout, 'Breakout Buy Signal', 'Breakout Buy Signal Triggered')
+alertcondition(bearish_breakdown, 'Breakout Sell Signal', 'Breakout Sell Signal Triggered')
+alertcondition(breakout_tp_hit_alert or breakout_auto_tp_hit_alert, 'Breakout Take Profit', 'Breakout Take Profit Hit')
+alertcondition(breakout_sl_hit_alert, 'Breakout Stop Loss', 'Breakout Stop Loss Hit')
+
+alertcondition(tbh_buy_condition and tbh_use_enhanced_entry, 'TBH-TRAIL Enhanced Buy Entry', 'TBH-TRAIL Buy Signal with Enhanced Entry Validation')
+alertcondition(tbh_sell_condition and tbh_use_enhanced_entry, 'TBH-TRAIL Enhanced Sell Entry', 'TBH-TRAIL Sell Signal with Enhanced Entry Validation')
+alertcondition(tbh_tp_hit, 'TBH-TRAIL Take Profit', 'TBH-TRAIL Take Profit Hit')
+alertcondition(tbh_sl_hit, 'TBH-TRAIL Stop Loss', 'TBH-TRAIL Stop Loss Hit')
+alertcondition(tbh_in_trade and tbh_supertrend_activated and not tbh_supertrend_activated[1], 'TBH Supertrend Activation', 'TBH Supertrend Takes Over Trailing')
+
+alertcondition(vwap_buy_signal, 'VWAP Buy Signal', 'VWAP Buy Signal Triggered')
+alertcondition(vwap_sell_signal, 'VWAP Sell Signal', 'VWAP Sell Signal Triggered')
+alertcondition(vwap_tp_hit_alert or vwap_auto_tp_hit_alert, 'VWAP Take Profit', 'VWAP Take Profit Hit')
+alertcondition(vwap_sl_hit_alert, 'VWAP Stop Loss', 'VWAP Stop Loss Hit')
+
+alertcondition(tbh_buy_supertrend and enable_tbh_strategy, 'TBH Supertrend Buy Signal', 'TBH Supertrend Crossover Buy Signal')
+alertcondition(tbh_sell_supertrend and enable_tbh_strategy, 'TBH Supertrend Sell Signal', 'TBH Supertrend Crossunder Sell Signal')
+
+alertcondition(overlap_detected, 'Same Bar Overlap Filter', 'Multiple Strategy Signals Same Bar')
+alertcondition(active_trade_blocks, 'Active Trade Blocks Signal', 'New Signal Blocked by Active Trade')
+alertcondition(isEntryBlocked() and (bb_has_signal or breakout_has_signal or tbh_has_signal or vwap_has_signal), 'Entry Blocked After 3:15 PM', 'New Entry Attempted After 3:15 PM')
+
+// Background highlighting for various conditions
+bgcolor(alert_above_upper and enable_bb_strategy ? color.new(color.orange, 90) : na, title="BB Alert Above Upper")
+bgcolor(alert_below_lower and enable_bb_strategy ? color.new(color.purple, 90) : na, title="BB Alert Below Lower")
+bgcolor(overlap_detected ? color.new(color.yellow, 85) : na, title="Same Bar Overlap")
+bgcolor(active_trade_blocks ? color.new(color.orange, 85) : na, title="Active Trade Blocks Signal")
+bgcolor(isEntryBlocked() ? color.new(color.gray, 90) : na, title="Entries Blocked After 3:15 PM")
+
+// Highlight Supertrend direction changes and activation
+bgcolor(tbh_direction != tbh_direction[1] and enable_tbh_strategy and show_tbh_supertrend ? color.new(color.blue, 95) : na, title="Supertrend Direction Change")
+bgcolor(tbh_in_trade and tbh_supertrend_activated and not tbh_supertrend_activated[1] ? color.new(color.lime, 85) : na, title="TBH Supertrend Takes Over")
+
+// VWAP background highlighting
+bgcolor(vwap_complete_candle_above and not vwap_in_trade and enable_vwap_strategy ? color.new(color.purple, 95) : na, title="Complete Candle Above VWAP")
+bgcolor(vwap_complete_candle_below and not vwap_in_trade and enable_vwap_strategy ? color.new(color.maroon, 95) : na, title="Complete Candle Below VWAP")
+
+// Color candles based on active trades - Updated with VWAP
+barcolor(bb_in_trade and enable_bb_strategy and bb_trade_type == "BUY" ? color.new(color.green, 70) : 
+         bb_in_trade and enable_bb_strategy and bb_trade_type == "SELL" ? color.new(color.red, 70) : 
+         breakout_in_trade and enable_breakout_strategy and breakout_trade_type == "BUY" ? color.new(color.blue, 70) :
+         breakout_in_trade and enable_breakout_strategy and breakout_trade_type == "SELL" ? color.new(color.orange, 70) :
+         tbh_in_trade and enable_tbh_strategy and tbh_trade_type == "BUY" ? color.new(color.aqua, 70) :
+         tbh_in_trade and enable_tbh_strategy and tbh_trade_type == "SELL" ? color.new(color.fuchsia, 70) :
+         vwap_in_trade and enable_vwap_strategy and vwap_trade_type == "BUY" ? color.new(color.purple, 70) :
+         vwap_in_trade and enable_vwap_strategy and vwap_trade_type == "SELL" ? color.new(color.maroon, 70) : na)
+
