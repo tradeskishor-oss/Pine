@@ -19,7 +19,8 @@ normal_low = request.security(base_ticker, timeframe.period, low, lookahead=barm
 normal_open = request.security(base_ticker, timeframe.period, open, lookahead=barmerge.lookahead_off)
 
 
-
+// Add after line 42 (with other inputs)
+reset_all_variables = input.bool(false, title="🔄 Reset All Variables (Toggle On/Off)", group="Strategy Toggles", tooltip="Toggle this to reset all trade history and counters")
 
 // ═══════════════════════════════════════════════════════════════════════════════════
 // STRATEGY ENABLE/DISABLE TOGGLES
@@ -444,7 +445,62 @@ var bool bb_signal_this_bar = false
 var bool breakout_signal_this_bar = false
 
 
+// Add after line 610 (after all var declarations)
 
+// VARIABLE RESET LOGIC
+if reset_all_variables
+    // Reset breakout trade state
+    breakout_in_trade := false
+    breakout_trade_type := ""
+    breakout_entry_price := na
+    breakout_stop_loss := na
+    breakout_entry_bar_index := na
+    breakout_tp_hit_alert := false
+    breakout_sl_hit_alert := false
+    breakout_auto_tp_hit_alert := false
+    breakout_315_exit := false
+    breakout_trade_points_tp := 0.0
+    breakout_trade_points_sl := 0.0
+    
+    // Reset BB trade state
+    bb_in_trade := false
+    bb_trade_type := ""
+    bb_entry_price := na
+    bb_stop_loss := na
+    bb_take_profit := na
+    bb_entry_bar_index := na
+    bb_sl_method := ""
+    bb_waiting_for_entry := false
+    bb_alert_is_above_upper := false
+    bb_alert_bar_index := na
+    bb_alert_candle_high := na
+    bb_alert_candle_low := na
+    
+    // Clear performance tracking arrays
+    array.clear(combined_trade_months)
+    array.clear(combined_trade_years)
+    array.clear(combined_trade_was_tp)
+    array.clear(combined_trade_points)
+    array.clear(combined_trade_strategy)
+    
+    // Reset counters
+    combined_total_tp_count := 0
+    combined_total_sl_count := 0
+    combined_total_tp_points := 0.0
+    combined_total_sl_points := 0.0
+    bb_tp_count := 0
+    bb_sl_count := 0
+    breakout_tp_count := 0
+    breakout_sl_count := 0
+    current_sl_streak := 0
+    max_sl_streak := 0
+    current_sl_streak_points := 0.0
+    max_sl_streak_points := 0.0
+    
+    // Reset overlap filter
+    any_strategy_active := false
+    bb_signal_this_bar := false
+    breakout_signal_this_bar := false
 
 
 
@@ -544,6 +600,7 @@ calculateSmartSL(entryPrice, alertHigh, alertLow, isBuy, maxPoints, buffer) =>
 // ═══════════════════════════════════════════════════════════════════════════════════
 // BREAKOUT STRATEGY CALCULATIONS
 // ═══════════════════════════════════════════════════════════════════════════════════
+
 
 // ATR Trailing calculation for breakout
 Prev = ta.highest(high - Mult * ta.atr(Atr), Hhv)
@@ -654,6 +711,67 @@ var bool breakout_auto_tp_hit_alert = false
 var bool breakout_315_exit = false
 var float breakout_trade_points_tp = 0.0
 var float breakout_trade_points_sl = 0.0
+
+
+
+
+// Add after line 610 (after all var declarations)
+
+// VARIABLE RESET LOGIC
+if reset_all_variables
+    // Reset breakout trade state
+    breakout_in_trade := false
+    breakout_trade_type := ""
+    breakout_entry_price := na
+    breakout_stop_loss := na
+    breakout_entry_bar_index := na
+    breakout_tp_hit_alert := false
+    breakout_sl_hit_alert := false
+    breakout_auto_tp_hit_alert := false
+    breakout_315_exit := false
+    breakout_trade_points_tp := 0.0
+    breakout_trade_points_sl := 0.0
+    
+    // Reset BB trade state
+    bb_in_trade := false
+    bb_trade_type := ""
+    bb_entry_price := na
+    bb_stop_loss := na
+    bb_take_profit := na
+    bb_entry_bar_index := na
+    bb_sl_method := ""
+    bb_waiting_for_entry := false
+    bb_alert_is_above_upper := false
+    bb_alert_bar_index := na
+    bb_alert_candle_high := na
+    bb_alert_candle_low := na
+    
+    // Clear performance tracking arrays
+    array.clear(combined_trade_months)
+    array.clear(combined_trade_years)
+    array.clear(combined_trade_was_tp)
+    array.clear(combined_trade_points)
+    array.clear(combined_trade_strategy)
+    
+    // Reset counters
+    combined_total_tp_count := 0
+    combined_total_sl_count := 0
+    combined_total_tp_points := 0.0
+    combined_total_sl_points := 0.0
+    bb_tp_count := 0
+    bb_sl_count := 0
+    breakout_tp_count := 0
+    breakout_sl_count := 0
+    current_sl_streak := 0
+    max_sl_streak := 0
+    current_sl_streak_points := 0.0
+    max_sl_streak_points := 0.0
+    
+    // Reset overlap filter
+    any_strategy_active := false
+    bb_signal_this_bar := false
+    breakout_signal_this_bar := false
+
 
 
 // ═══════════════════════════════════════════════════════════════════
