@@ -1,9 +1,25 @@
-//@version=5
+//@version=6
 // Created by digitaljobnews-hash & eatapple990-cmyk
-// TBH Pure Supertrend Trailing Logic - Performance Table Fixed + VWAP Strategy
-// Current Date and Time (UTC): 2025-01-09 04:25:31
-// Current User: eatapple990-cmyk
-indicator('Banknifty', overlay=true, max_bars_back=501, max_lines_count=400)
+// Current Date and Time (UTC): 2025-09-22 16:07:54
+// Current User: tradeapple990-bot
+indicator('Breakout and BB Reversal', overlay=true, max_bars_back=501, max_lines_count=400)
+
+
+// ═════════════════════════════════════════════════════════════════
+// NORMAL CANDLE DATA FOR PNL CALCULATION - FIXED WITH CORRECT METHOD
+// ═════════════════════════════════════════════════════════════════
+
+// Get the real ticker symbol (non-Heikin Ashi) using the correct method from reference indicator
+base_ticker = ticker.new(syminfo.prefix, syminfo.ticker, session=session.regular)
+
+// Fetch normal (real) OHLC data - matching reference indicator logic
+normal_close = request.security(base_ticker, timeframe.period, close, lookahead=barmerge.lookahead_off)
+normal_high = request.security(base_ticker, timeframe.period, high, lookahead=barmerge.lookahead_off) 
+normal_low = request.security(base_ticker, timeframe.period, low, lookahead=barmerge.lookahead_off)
+normal_open = request.security(base_ticker, timeframe.period, open, lookahead=barmerge.lookahead_off)
+
+
+
 
 // ═══════════════════════════════════════════════════════════════════════════════════
 // STRATEGY ENABLE/DISABLE TOGGLES
@@ -13,12 +29,166 @@ enable_bb_strategy = input.bool(false, title="✅ Enable Bollinger Band Reversal
 enable_breakout_strategy = input.bool(false, title="✅ Enable Breakout Strategy", group="Strategy Toggles")
 
 
-// TIME SLOT EXCLUSION SETTINGS
-enable_time_exclusion = input.bool(false, title="🚫 Enable Time Slot Exclusion", tooltip="Blocks trades during poor performance time slots", group="Strategy Toggles")
+// BIAS CONFLUENCE TOGGLE
+enable_bias_confluence = input.bool(true, title="✅ Enable Nifty Bias Confluence", tooltip="Requires BULL bias for BUY signals and BEAR bias for SELL signals", group="Strategy Toggles")
+
 
 // ENHANCED OVERLAP FILTER
 enable_overlap_filter = input.bool(true, title="✅ Enable Signal Overlap Filter", tooltip="Prevents multiple strategy signals when any strategy has active trade", group="Strategy Toggles")
-enable_315_exit = input.bool(true, title="✅ Enable 3:15 PM Auto Exit", tooltip="Closes all active trades at 3:15 PM and blocks new entries after 3:15 PM", group="Strategy Toggles")
+
+
+// AUTO EXIT SETTINGS
+enable_auto_exit = input.bool(true, title="✅ Enable Auto Exit", tooltip="Closes all active trades at specified time and blocks new entries after", group="Auto Exit Settings")
+auto_exit_hour = input.int(15, title="Auto Exit Hour (24h format)", minval=9, maxval=23, group="Auto Exit Settings")
+auto_exit_minute = input.int(15, title="Auto Exit Minute", minval=0, maxval=59, step=15, group="Auto Exit Settings")
+block_entries_after_exit = input.bool(true, title="Block New Entries After Exit Time", group="Auto Exit Settings")
+
+
+
+
+
+
+
+
+
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// NIFTY BIAS CONFLUENCE CALCULATION - TOP 20 STOCKS
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+// Bias calculation parameters
+bias_update_frequency = input.int(5, "Bias Update Frequency (minutes)", minval=1, maxval=15, tooltip="Time between bias analysis sessions", group="Bias Confluence")
+bias_change_threshold = input.float(0.05, "Bias Threshold %", minval=0.01, step=0.01, tooltip="Minimum % change to classify as gainer/loser", group="Bias Confluence")
+
+// Configurable bias thresholds
+bias_bull_threshold = input.float(8.0, "BULL Bias Threshold", minval=1.0, maxval=50.0, step=0.5, tooltip="Spread above this value = BULL bias", group="Bias Confluence")
+bias_bear_threshold = input.float(-8.0, "BEAR Bias Threshold", maxval=-1.0, minval=-50.0, step=0.5, tooltip="Spread below this value = BEAR bias", group="Bias Confluence")
+
+
+// Top 16 Nifty stocks with OFFICIAL WEIGHTAGES (Total: ~66% coverage)
+bias_top16_symbols = array.from("NSE:HDFCBANK", "NSE:ICICIBANK", "NSE:RELIANCE", "NSE:INFY", "NSE:BHARTIARTL", "NSE:LT", "NSE:ITC", "NSE:TCS", "NSE:SBIN", "NSE:AXISBANK", "NSE:KOTAKBANK", "NSE:M&M", "NSE:HCLTECH", "NSE:BAJFINANCE", "NSE:MARUTI", "NSE:ASIANPAINT")
+bias_top16_weights = array.from(13.11, 9.00, 8.31, 4.78, 4.65, 3.82, 3.45, 2.85, 2.79, 2.70, 2.60, 2.55, 2.14, 2.13, 2.11, 1.97)
+
+// Request security data for top 20 stocks (40 calls total - within Pine Script limit)
+// Stocks 1-10
+bias_stock1_current = request.security("NSE:HDFCBANK", str.tostring(bias_update_frequency), close[0], lookahead=barmerge.lookahead_off)
+bias_stock1_ref = request.security("NSE:HDFCBANK", str.tostring(bias_update_frequency), close[1], lookahead=barmerge.lookahead_off)
+bias_stock2_current = request.security("NSE:ICICIBANK", str.tostring(bias_update_frequency), close[0], lookahead=barmerge.lookahead_off)
+bias_stock2_ref = request.security("NSE:ICICIBANK", str.tostring(bias_update_frequency), close[1], lookahead=barmerge.lookahead_off)
+bias_stock3_current = request.security("NSE:RELIANCE", str.tostring(bias_update_frequency), close[0], lookahead=barmerge.lookahead_off)
+bias_stock3_ref = request.security("NSE:RELIANCE", str.tostring(bias_update_frequency), close[1], lookahead=barmerge.lookahead_off)
+bias_stock4_current = request.security("NSE:INFY", str.tostring(bias_update_frequency), close[0], lookahead=barmerge.lookahead_off)
+bias_stock4_ref = request.security("NSE:INFY", str.tostring(bias_update_frequency), close[1], lookahead=barmerge.lookahead_off)
+bias_stock5_current = request.security("NSE:BHARTIARTL", str.tostring(bias_update_frequency), close[0], lookahead=barmerge.lookahead_off)
+bias_stock5_ref = request.security("NSE:BHARTIARTL", str.tostring(bias_update_frequency), close[1], lookahead=barmerge.lookahead_off)
+bias_stock6_current = request.security("NSE:LT", str.tostring(bias_update_frequency), close[0], lookahead=barmerge.lookahead_off)
+bias_stock6_ref = request.security("NSE:LT", str.tostring(bias_update_frequency), close[1], lookahead=barmerge.lookahead_off)
+bias_stock7_current = request.security("NSE:ITC", str.tostring(bias_update_frequency), close[0], lookahead=barmerge.lookahead_off)
+bias_stock7_ref = request.security("NSE:ITC", str.tostring(bias_update_frequency), close[1], lookahead=barmerge.lookahead_off)
+bias_stock8_current = request.security("NSE:TCS", str.tostring(bias_update_frequency), close[0], lookahead=barmerge.lookahead_off)
+bias_stock8_ref = request.security("NSE:TCS", str.tostring(bias_update_frequency), close[1], lookahead=barmerge.lookahead_off)
+bias_stock9_current = request.security("NSE:SBIN", str.tostring(bias_update_frequency), close[0], lookahead=barmerge.lookahead_off)
+bias_stock9_ref = request.security("NSE:SBIN", str.tostring(bias_update_frequency), close[1], lookahead=barmerge.lookahead_off)
+bias_stock10_current = request.security("NSE:AXISBANK", str.tostring(bias_update_frequency), close[0], lookahead=barmerge.lookahead_off)
+bias_stock10_ref = request.security("NSE:AXISBANK", str.tostring(bias_update_frequency), close[1], lookahead=barmerge.lookahead_off)
+
+// Stocks 11-20
+bias_stock11_current = request.security("NSE:KOTAKBANK", str.tostring(bias_update_frequency), close[0], lookahead=barmerge.lookahead_off)
+bias_stock11_ref = request.security("NSE:KOTAKBANK", str.tostring(bias_update_frequency), close[1], lookahead=barmerge.lookahead_off)
+bias_stock12_current = request.security("NSE:HCLTECH", str.tostring(bias_update_frequency), close[0], lookahead=barmerge.lookahead_off)
+bias_stock12_ref = request.security("NSE:HCLTECH", str.tostring(bias_update_frequency), close[1], lookahead=barmerge.lookahead_off)
+bias_stock13_current = request.security("NSE:BAJFINANCE", str.tostring(bias_update_frequency), close[0], lookahead=barmerge.lookahead_off)
+bias_stock13_ref = request.security("NSE:BAJFINANCE", str.tostring(bias_update_frequency), close[1], lookahead=barmerge.lookahead_off)
+bias_stock14_current = request.security("NSE:MARUTI", str.tostring(bias_update_frequency), close[0], lookahead=barmerge.lookahead_off)
+bias_stock14_ref = request.security("NSE:MARUTI", str.tostring(bias_update_frequency), close[1], lookahead=barmerge.lookahead_off)
+bias_stock15_current = request.security("NSE:ASIANPAINT", str.tostring(bias_update_frequency), close[0], lookahead=barmerge.lookahead_off)
+bias_stock15_ref = request.security("NSE:ASIANPAINT", str.tostring(bias_update_frequency), close[1], lookahead=barmerge.lookahead_off)
+bias_stock16_current = request.security("NSE:NESTLEIND", str.tostring(bias_update_frequency), close[0], lookahead=barmerge.lookahead_off)
+bias_stock16_ref = request.security("NSE:NESTLEIND", str.tostring(bias_update_frequency), close[1], lookahead=barmerge.lookahead_off)
+bias_stock17_current = request.security("NSE:ULTRACEMCO", str.tostring(bias_update_frequency), close[0], lookahead=barmerge.lookahead_off)
+bias_stock17_ref = request.security("NSE:ULTRACEMCO", str.tostring(bias_update_frequency), close[1], lookahead=barmerge.lookahead_off)
+bias_stock18_current = request.security("NSE:TITAN", str.tostring(bias_update_frequency), close[0], lookahead=barmerge.lookahead_off)
+bias_stock18_ref = request.security("NSE:TITAN", str.tostring(bias_update_frequency), close[1], lookahead=barmerge.lookahead_off)
+bias_stock19_current = request.security("NSE:WIPRO", str.tostring(bias_update_frequency), close[0], lookahead=barmerge.lookahead_off)
+bias_stock19_ref = request.security("NSE:WIPRO", str.tostring(bias_update_frequency), close[1], lookahead=barmerge.lookahead_off)
+bias_stock20_current = request.security("NSE:SUNPHARMA", str.tostring(bias_update_frequency), close[0], lookahead=barmerge.lookahead_off)
+bias_stock20_ref = request.security("NSE:SUNPHARMA", str.tostring(bias_update_frequency), close[1], lookahead=barmerge.lookahead_off)
+
+
+// Arrays for bias calculation - TOP 16 STOCKS
+bias_current_prices = array.from(bias_stock1_current, bias_stock2_current, bias_stock3_current, bias_stock4_current, bias_stock5_current, bias_stock6_current, bias_stock7_current, bias_stock8_current, bias_stock9_current, bias_stock10_current, bias_stock11_current, bias_stock12_current, bias_stock13_current, bias_stock14_current, bias_stock15_current, bias_stock16_current)
+bias_ref_prices = array.from(bias_stock1_ref, bias_stock2_ref, bias_stock3_ref, bias_stock4_ref, bias_stock5_ref, bias_stock6_ref, bias_stock7_ref, bias_stock8_ref, bias_stock9_ref, bias_stock10_ref, bias_stock11_ref, bias_stock12_ref, bias_stock13_ref, bias_stock14_ref, bias_stock15_ref, bias_stock16_ref)
+
+// Calculate bias with top 20 stocks
+var float bias_gainers_weight = 0.0
+var float bias_losers_weight = 0.0
+var float bias_spread = 0.0
+var string current_nifty_bias = "SIDEWAYS"
+var int bias_gainers_count = 0
+var int bias_losers_count = 0
+var int bias_unchanged_count = 0
+
+// Update bias calculation with configurable thresholds
+if barstate.isconfirmed
+    temp_gainers_weight = 0.0
+    temp_losers_weight = 0.0
+    temp_gainers_count = 0
+    temp_losers_count = 0
+    temp_unchanged_count = 0
+    
+    for i = 0 to 15  // Top 16 stocks
+        weight = array.get(bias_top16_weights, i)
+        stock_current = array.get(bias_current_prices, i)
+        stock_ref = array.get(bias_ref_prices, i)
+        
+        change_pct = stock_ref != 0 and not na(stock_ref) and not na(stock_current) ? 
+                     ((stock_current - stock_ref) / stock_ref) * 100 : 0.0
+        
+        if change_pct > bias_change_threshold
+            temp_gainers_weight += weight
+            temp_gainers_count += 1
+        else if change_pct < -bias_change_threshold
+            temp_losers_weight += weight
+            temp_losers_count += 1
+        else
+            temp_unchanged_count += 1
+    
+    bias_gainers_weight := temp_gainers_weight
+    bias_losers_weight := temp_losers_weight
+    bias_gainers_count := temp_gainers_count
+    bias_losers_count := temp_losers_count
+    bias_unchanged_count := temp_unchanged_count
+    
+// Smooth the bias spread with EMA (length = 3 bars)
+bias_spread_raw = bias_gainers_weight - bias_losers_weight
+bias_spread := ta.vwma(bias_spread_raw, 1)
+
+
+// Update current bias using raw thresholds only
+current_nifty_bias := bias_spread > bias_bull_threshold ? "BULL" : bias_spread < bias_bear_threshold ? "BEAR" : "SIDEWAYS"
+
+
+// Bias confluence functions
+isBiasAllowedForBuy() =>
+    if not enable_bias_confluence
+        true
+    else
+        current_nifty_bias == "BULL"
+
+isBiasAllowedForSell() =>
+    if not enable_bias_confluence
+        true
+    else
+        current_nifty_bias == "BEAR"
+
+
+getBiasSpreadInfo() => (bias_spread > 0 ? "+" + str.tostring(bias_spread, "#.##") : str.tostring(bias_spread, "#.##")) + " (" + str.tostring(bias_gainers_count) + "G/" + str.tostring(bias_losers_count) + "L/" + str.tostring(bias_unchanged_count) + "N)"
+
+getBiasThresholdInfo() => "Bull>" + str.tostring(bias_bull_threshold, "#.#") + " | Bear<" + str.tostring(bias_bear_threshold, "#.#")
+
+getBiasCoverageInfo() => "Top16: " + str.tostring(math.round(bias_gainers_weight + bias_losers_weight, 1)) + "% coverage"
+
+
 
 // ═══════════════════════════════════════════════════════════════════════════════════
 // BOLLINGER BAND REVERSAL STRATEGY INPUTS - IMPROVED SL LOGIC
@@ -38,50 +208,21 @@ tp_points = input.float(50.0, title="Take Profit Points", minval=10.0, maxval=20
 // IMPROVED STOP LOSS SETTINGS
 bb_sl_type = input.string("Smart SL (Min Risk)", title="Stop Loss Type", options=["Smart SL (Min Risk)", "Candle Based", "Fixed Points"], group="Bollinger Band Strategy")
 bb_fixed_sl_points = input.float(30.0, title="Max SL Points (Smart/Fixed)", minval=5.0, maxval=100.0, step=1.0, group="Bollinger Band Strategy", tooltip="For Smart SL: Maximum risk in points. For Fixed SL: Exact risk in points.")
-bb_sl_buffer = input.float(2.0, title="Alert Candle SL Buffer", minval=0.0, maxval=10.0, step=0.5, group="Bollinger Band Strategy", tooltip="Extra buffer points added to alert candle high/low")
+bb_sl_buffer = input.float(2.0, title="Alert Candle SL Buffer", minval=-50, maxval=10.0, step=0.5, group="Bollinger Band Strategy", tooltip="Extra buffer points added to alert candle high/low")
 bb_enable_alerts = input.bool(true, title="Enable BB Alerts", group="Bollinger Band Strategy")
 
-// BB Time Exclusion Settings - 12 slots
-bb_exclude_0915_0930 = input.bool(true, title="Exclude 9:15-9:30", group="Bollinger Band Strategy")
-bb_exclude_0930_0945 = input.bool(true, title="Exclude 9:30-9:45", group="Bollinger Band Strategy")
-bb_exclude_1015_1030 = input.bool(true, title="Exclude 10:15-10:30", group="Bollinger Band Strategy")
-bb_exclude_1115_1145 = input.bool(true, title="Exclude 11:15-11:45", group="Bollinger Band Strategy")
-bb_exclude_1200_1215 = input.bool(true, title="Exclude 12:00-12:15", group="Bollinger Band Strategy")
-bb_exclude_1245_1300 = input.bool(true, title="Exclude 12:45-13:00", group="Bollinger Band Strategy")
-bb_exclude_1300_1315 = input.bool(true, title="Exclude 13:00-13:15", group="Bollinger Band Strategy")
-bb_exclude_1315_1330 = input.bool(true, title="Exclude 13:15-13:30", group="Bollinger Band Strategy")
-bb_exclude_1330_1345 = input.bool(true, title="Exclude 13:30-13:45", group="Bollinger Band Strategy")
-bb_exclude_1415_1430 = input.bool(true, title="Exclude 14:15-14:30", group="Bollinger Band Strategy")
-bb_exclude_1430_1445 = input.bool(true, title="Exclude 14:30-14:45", group="Bollinger Band Strategy")
-bb_exclude_1500_1515 = input.bool(true, title="Exclude 15:00-15:15", group="Bollinger Band Strategy") 
+
 
 // Display Settings - DEFAULT OFF FOR CLEAN VISUALS
 show_bb_lines = input.bool(false, title="Show Bollinger Bands", group="Bollinger Band Strategy")
 show_bb_signals = input.bool(true, title="Show BB Entry Signals", group="Bollinger Band Strategy")
 show_bb_tp_sl_labels = input.bool(true, title="Show BB TP/SL Hit Labels", group="Bollinger Band Strategy")
 
-
-
-
-// ═════════════════════════════════════════════════════════════════
-// NORMAL CANDLE DATA FOR PNL CALCULATION - FOR BREAKOUT STRATEGY
-// ═════════════════════════════════════════════════════════════════
-
-// Get the real ticker symbol (non-Heikin Ashi) using the correct method
-base_ticker = ticker.new(syminfo.prefix, syminfo.ticker, session=session.regular)
-
-// Fetch normal (real) OHLC data for accurate P&L
-normal_close = request.security(base_ticker, timeframe.period, close, lookahead=barmerge.lookahead_off)
-normal_high = request.security(base_ticker, timeframe.period, high, lookahead=barmerge.lookahead_off) 
-normal_low = request.security(base_ticker, timeframe.period, low, lookahead=barmerge.lookahead_off)
-normal_open = request.security(base_ticker, timeframe.period, open, lookahead=barmerge.lookahead_off)
-
-
 // ═══════════════════════════════════════════════════════════════════════════════════
 // BREAKOUT STRATEGY INPUTS
 // ═══════════════════════════════════════════════════════════════════════════════════
 
-prd = input.int(7, title="Pivot Period", minval=2, group="Breakout Strategy")
+prd = input.int(7, title="Pivot Period", minval=1, group="Breakout Strategy")
 bo_len = input.int(200, title="Max Breakout Length", minval=0, maxval=3000, group="Breakout Strategy")
 cwidthu = input.float(6.0, title="Threshold Rate %", minval=1.0, maxval=100.0, group="Breakout Strategy") / 100
 mintest = input.int(2, title="Minimum Number of Tests", minval=1, group="Breakout Strategy")
@@ -90,15 +231,29 @@ min_points_below_zone = input.float(2.5, title="Min Points Below Zone for SELL",
 
 Atr = input.int(defval=5, title='ATR Period', minval=1, maxval=500, group="Breakout Strategy")
 Hhv = input.int(defval=10, title='HHV Period', minval=1, maxval=500, group="Breakout Strategy")
-Mult = input.float(defval=2.5, title='ATR Multiplier', minval=0.1, step=0.1, group="Breakout Strategy")
+Mult = input.float(defval=2.5, step=0.1, title='ATR Multiplier', minval=0.1, group="Breakout Strategy")
 
 // STOP LOSS SETTINGS
 breakout_sl_type = input.string("Entry Candle Low", title="Stop Loss Type", options=["Fixed Points", "ATR Trailing", "Entry Candle Low"], group="Breakout Strategy")
 breakout_fixed_sl_points = input.float(31.0, title="Fixed SL Points", group="Breakout Strategy")
-entry_candle_buffer = input.float(5.0, title="Entry Candle SL Buffer (Points)", minval=0.0, maxval=50.0, group="Breakout Strategy")
+entry_candle_buffer = input.float(5.0, title="Entry Candle SL Buffer (Points)", minval=-100, maxval=50.0, group="Breakout Strategy")
 auto_tp_time = input.bool(true, title="Auto TP at 3:15 PM", group="Breakout Strategy")
 
 breakout_enable_alerts = input.bool(true, title="Enable Breakout Alerts", group="Breakout Strategy")
+
+
+// DEBUG LABELS FOR BREAKOUT STRATEGY
+enable_breakout_debug = input.bool(false, title="🔍 Enable Breakout Debug Labels", group="Breakout Debug")
+debug_date_year = input.int(2025, title="Debug Date - Year", minval=2020, maxval=2030, group="Breakout Debug")
+debug_date_month = input.int(1, title="Debug Date - Month", minval=1, maxval=12, group="Breakout Debug")
+debug_date_day = input.int(15, title="Debug Date - Day", minval=1, maxval=31, group="Breakout Debug")
+debug_time_hour = input.int(10, title="Debug Time - Hour", minval=0, maxval=23, group="Breakout Debug")
+debug_time_minute = input.int(30, title="Debug Time - Minute", minval=0, maxval=59, group="Breakout Debug")
+
+
+
+
+
 
 
 
@@ -111,7 +266,7 @@ show_performance_table = input.bool(true, title="Show Combined Performance Table
 table_position = input.string("bottom_right", title="Table Position", options=["top_left", "top_center", "top_right", "middle_left", "middle_center", "middle_right", "bottom_left", "bottom_center", "bottom_right"], group="Global Display Settings")
 
 // User Info - Updated
-user_login = input.string("eatapple990-cmyk", title="User Login", group="Global Display Settings")
+user_login = input.string("tradeapple990-bot", title="User Login", group="Global Display Settings")
 
 // ═══════════════════════════════════════════════════════════════════════════════════
 // UTILITY FUNCTIONS
@@ -160,17 +315,92 @@ getMonthNameWithYear(monthNum, yearNum) =>
         => "Unknown"
     month_name + " " + str.tostring(yearNum)
 
-// FIXED TIME RESTRICTION FUNCTIONS
-isAfter315PM() =>
-    if not enable_315_exit
+
+// START TIME VALIDATION FUNCTIONS
+parseStartTime(timeStr) =>
+    switch timeStr
+        "09:15" => [9, 15]
+        "09:30" => [9, 30]
+        "09:45" => [9, 45]
+        "10:00" => [10, 0]
+        "09:20" => [10, 15]
+        "10:30" => [10, 30]
+        "10:45" => [10, 45]
+        "11:00" => [11, 0]
+        => [9, 15]
+
+isAfterStartTime(strategy_start_time) =>
+    [start_hour, start_minute] = parseStartTime(strategy_start_time)
+    current_hour = hour(time, 'GMT+5:30')
+    current_minute = minute(time, 'GMT+5:30')
+    
+    current_hour > start_hour or (current_hour == start_hour and current_minute >= start_minute)
+
+
+
+
+
+
+isAfterAutoExitTime() =>
+    if not enable_auto_exit
         false
     else
-        t = time('1', 'GMT+5:30')
-        hour(t) > 15 or (hour(t) == 15 and minute(t) >= 15)
+        current_hour = hour(time, 'GMT+5:30')
+        current_minute = minute(time, 'GMT+5:30')
+        current_hour > auto_exit_hour or (current_hour == auto_exit_hour and current_minute >= auto_exit_minute)
 
-// NEW FUNCTION: Block all entries after 3:15 PM
+// Block all entries after auto exit time (if enabled)
 isEntryBlocked() =>
-    isAfter315PM()
+    if block_entries_after_exit
+        isAfterAutoExitTime()
+    else
+        false
+
+    // Backward compatibility function
+isAfter315PM() =>
+    isAfterAutoExitTime()
+
+
+
+
+
+
+
+
+
+// Check if current candle is first candle before 9:21
+isFirstCandleBefore926() =>
+    current_hour = hour(time, 'GMT+5:30')
+    current_minute = minute(time, 'GMT+5:30')
+    current_hour == 9 and current_minute <= 26
+
+// Check if SL or TP hit in current candle
+isSlOrTpHitInCurrentCandle(entry_price, stop_loss, take_profit, is_buy_trade) =>
+    if is_buy_trade
+        // For BUY: SL hit if low <= stop_loss, TP hit if high >= take_profit
+        (not na(stop_loss) and normal_low <= stop_loss) or (not na(take_profit) and normal_high >= take_profit)
+    else
+        // For SELL: SL hit if high >= stop_loss, TP hit if low <= take_profit
+        (not na(stop_loss) and normal_high >= stop_loss) or (not na(take_profit) and normal_low <= take_profit)
+
+
+
+
+
+// Check if current bar matches debug date/time
+isDebugCandle() =>
+    current_year = year(time, 'GMT+5:30')
+    current_month = month(time, 'GMT+5:30')
+    current_day = dayofmonth(time, 'GMT+5:30')
+    current_hour = hour(time, 'GMT+5:30')
+    current_minute = minute(time, 'GMT+5:30')
+    
+    current_year == debug_date_year and 
+     current_month == debug_date_month and 
+     current_day == debug_date_day and 
+     current_hour == debug_time_hour and 
+     current_minute == debug_time_minute
+
 
 
 
@@ -198,6 +428,10 @@ var int breakout_tp_count = 0
 var int breakout_sl_count = 0
 
 
+
+
+
+
 // SL Streak tracking
 var int current_sl_streak = 0
 var int max_sl_streak = 0
@@ -208,6 +442,11 @@ var float max_sl_streak_points = 0.0
 var bool any_strategy_active = false
 var bool bb_signal_this_bar = false
 var bool breakout_signal_this_bar = false
+
+
+
+
+
 
 
 // ═══════════════════════════════════════════════════════════════════════════════════
@@ -245,16 +484,16 @@ var bool bb_alert_is_above_upper = false
 var int bb_alert_bar_index = na
 
 // Update alert candle levels
-if alert_above_upper and enable_bb_strategy
-    bb_alert_candle_high := high
-    bb_alert_candle_low := low
+if alert_above_upper and enable_bb_strategy and barstate.isconfirmed
+    bb_alert_candle_high := normal_high
+    bb_alert_candle_low := normal_low
     bb_waiting_for_entry := true
     bb_alert_is_above_upper := true
     bb_alert_bar_index := bar_index
 
-if alert_below_lower and enable_bb_strategy
-    bb_alert_candle_high := high
-    bb_alert_candle_low := low
+if alert_below_lower and enable_bb_strategy and barstate.isconfirmed
+    bb_alert_candle_high := normal_high
+    bb_alert_candle_low := normal_low
     bb_waiting_for_entry := true
     bb_alert_is_above_upper := false
     bb_alert_bar_index := bar_index
@@ -317,7 +556,7 @@ iff_2 = close < TS ? color.red : color.black
 Color = close > TS ? color.green : iff_2
 Buy_ATR = ta.crossover(close, TS)
 Sell_ATR = ta.crossunder(close, TS)
-is_auto_tp_time = auto_tp_time and hour(time) == 15 and minute(time) == 15
+is_auto_tp_time = auto_tp_time and isAfterAutoExitTime()
 
 lll = math.max(math.min(bar_index, 300), 1)
 h_value = ta.highest(lll)
@@ -356,8 +595,8 @@ var float breakout_entry_candle_low = na
 
 hgst_value = ta.highest(prd)[1]
 
-if array.size(phval) >= mintest and normal_close > normal_open and enable_breakout_strategy and not isEntryBlocked()
-    if normal_close > hgst_value
+if array.size(phval) >= mintest and close > open and enable_breakout_strategy and not isEntryBlocked() and isBiasAllowedForBuy()  
+    if close > hgst_value
         bomax = array.get(phval, 0)
         xx = 0
         for x = 0 to array.size(phval) - 1
@@ -371,18 +610,18 @@ if array.size(phval) >= mintest and normal_close > normal_open and enable_breako
                 if array.get(phval, x) <= bomax and array.get(phval, x) >= bomax - chwidth
                     num += 1
             if num >= mintest and hgst_value < bomax
-                points_above_zone = normal_close - bomax
+                points_above_zone = close - bomax
                 if points_above_zone >= min_points_above_zone
                     bullish_breakout_base := true
-                    breakout_entry_candle_low := normal_low  // Store normal candle low
+                    breakout_entry_candle_low := normal_low
 
 bearish_breakdown_base = false
 var float breakout_entry_candle_high = na
 
 lwst_value = ta.lowest(prd)[1]
 
-if array.size(plval) >= mintest and normal_close < normal_open and enable_breakout_strategy and not isEntryBlocked()
-    if normal_close < lwst_value
+if array.size(plval) >= mintest and close < open and enable_breakout_strategy and not isEntryBlocked() and isBiasAllowedForSell()
+    if close < lwst_value
         bomin = array.get(plval, 0)
         xx = 0
         for x = 0 to array.size(plval) - 1
@@ -396,10 +635,11 @@ if array.size(plval) >= mintest and normal_close < normal_open and enable_breako
                 if array.get(plval, x) >= bomin and array.get(plval, x) <= bomin + chwidth
                     num1 += 1
             if num1 >= mintest and lwst_value > bomin
-                points_below_zone = bomin - normal_close
+                points_below_zone = bomin - close
                 if points_below_zone >= min_points_below_zone
                     bearish_breakdown_base := true
-                    breakout_entry_candle_high := normal_high  // Store normal candle high
+                    breakout_entry_candle_high := normal_high
+
 // Breakout Trade Management Variables
 var bool breakout_in_trade = false
 var string breakout_trade_type = ""
@@ -416,27 +656,221 @@ var float breakout_trade_points_tp = 0.0
 var float breakout_trade_points_sl = 0.0
 
 
+// ═══════════════════════════════════════════════════════════════════
+// BREAKOUT STRATEGY DEBUG LABELS
+// ═══════════════════════════════════════════════════════════════════
+
+if enable_breakout_debug and isDebugCandle()
+    
+    // Calculate all condition states for BUY breakout
+    debug_phval_size = array.size(phval)
+    debug_plval_size = array.size(plval)
+    debug_close_gt_open = close > open
+    debug_close_lt_open = close < open
+    debug_strategy_enabled = enable_breakout_strategy
+    debug_entry_blocked = isEntryBlocked()
+    debug_bias_buy_allowed = isBiasAllowedForBuy()
+    debug_bias_sell_allowed = isBiasAllowedForSell()
+    debug_close_gt_hgst = close > hgst_value
+    debug_close_lt_lwst = close < lwst_value
+    
+    // BUY Breakout Analysis
+    var string buy_debug_text = ""
+    buy_debug_text := "🔍 BREAKOUT BUY DEBUG\n"
+    buy_debug_text += "Time: " + str.tostring(debug_time_hour, "00") + ":" + str.tostring(debug_time_minute, "00") + "\n"
+    buy_debug_text += "═══════════════════════\n\n"
+    
+    // Primary Conditions
+    buy_debug_text += "PRIMARY CONDITIONS:\n"
+    buy_debug_text += (debug_strategy_enabled ? "✅" : "❌") + " Strategy Enabled: " + str.tostring(debug_strategy_enabled) + "\n"
+    buy_debug_text += (debug_close_gt_open ? "✅" : "❌") + " Close > Open (Green): " + str.tostring(close, "#.##") + " > " + str.tostring(open, "#.##") + "\n"
+    buy_debug_text += (not debug_entry_blocked ? "✅" : "❌") + " Entry Not Blocked: " + str.tostring(not debug_entry_blocked) + "\n"
+    buy_debug_text += (debug_bias_buy_allowed ? "✅" : "❌") + " Bias Allowed: " + current_nifty_bias + " (" + str.tostring(bias_spread, "#.##") + ")\n"
+    buy_debug_text += (debug_phval_size >= mintest ? "✅" : "❌") + " Pivot Highs Array Size: " + str.tostring(debug_phval_size) + " >= " + str.tostring(mintest) + "\n"
+    buy_debug_text += (debug_close_gt_hgst ? "✅" : "❌") + " Close > HHV[" + str.tostring(prd) + "]: " + str.tostring(close, "#.##") + " > " + str.tostring(hgst_value, "#.##") + "\n"
+    buy_debug_text += (breakout_in_trade ? "❌" : "✅") + " Not In Trade: " + str.tostring(not breakout_in_trade) + "\n"
+    buy_debug_text += (any_strategy_active and enable_overlap_filter ? "❌" : "✅") + " No Overlap: " + str.tostring(not any_strategy_active) + "\n\n"
+    
+    // Detailed Breakout Logic Analysis
+    buy_debug_text += "BREAKOUT LOGIC:\n"
+    
+    if debug_phval_size >= mintest and debug_close_gt_open and debug_strategy_enabled and not debug_entry_blocked and debug_bias_buy_allowed
+        if debug_close_gt_hgst
+            var float debug_bomax = array.get(phval, 0)
+            var int debug_xx = 0
+            var int debug_pivot_loop_count = 0
+            
+            // Simulate the pivot loop
+            for x = 0 to debug_phval_size - 1
+                debug_pivot_loop_count := x
+                if array.get(phval, x) >= close
+                    break
+                debug_xx := x
+                debug_bomax := math.max(debug_bomax, array.get(phval, x))
+            
+            buy_debug_text += "  Pivot Loop Iterations: " + str.tostring(debug_pivot_loop_count + 1) + "\n"
+            buy_debug_text += "  Valid Pivots (xx): " + str.tostring(debug_xx) + "\n"
+            buy_debug_text += "  Breakout Max Level: " + str.tostring(debug_bomax, "#.##") + "\n"
+            buy_debug_text += (debug_xx >= mintest ? "  ✅" : "  ❌") + " xx >= mintest: " + str.tostring(debug_xx) + " >= " + str.tostring(mintest) + "\n"
+            buy_debug_text += (open <= debug_bomax ? "  ✅" : "  ❌") + " Open <= bomax: " + str.tostring(open, "#.##") + " <= " + str.tostring(debug_bomax, "#.##") + "\n"
+            
+            if debug_xx >= mintest and open <= debug_bomax
+                var int debug_num = 0
+                // Count pivots in zone
+                for x = 0 to debug_xx
+                    if array.get(phval, x) <= debug_bomax and array.get(phval, x) >= debug_bomax - chwidth
+                        debug_num += 1
+                
+                buy_debug_text += "  Zone Width: " + str.tostring(chwidth, "#.##") + " pts\n"
+                buy_debug_text += "  Zone Range: " + str.tostring(debug_bomax - chwidth, "#.##") + " to " + str.tostring(debug_bomax, "#.##") + "\n"
+                buy_debug_text += (debug_num >= mintest ? "  ✅" : "  ❌") + " Pivots in Zone: " + str.tostring(debug_num) + " >= " + str.tostring(mintest) + "\n"
+                buy_debug_text += (hgst_value < debug_bomax ? "  ✅" : "  ❌") + " HHV < bomax: " + str.tostring(hgst_value, "#.##") + " < " + str.tostring(debug_bomax, "#.##") + "\n"
+                
+                if debug_num >= mintest and hgst_value < debug_bomax
+                    var float debug_points_above = close - debug_bomax
+                    buy_debug_text += (debug_points_above >= min_points_above_zone ? "  ✅" : "  ❌") + " Points Above Zone: " + str.tostring(debug_points_above, "#.##") + " >= " + str.tostring(min_points_above_zone, "#.##") + "\n"
+                    buy_debug_text += "\n🎯 RESULT: " + (bullish_breakout_base ? "✅ BUY SIGNAL GENERATED" : "❌ NO SIGNAL") + "\n"
+                else
+                    buy_debug_text += "\n❌ Zone test failed\n"
+            else
+                buy_debug_text += "\n❌ Pivot validation failed\n"
+        else
+            buy_debug_text += "❌ Close not above HHV\n"
+    else
+        buy_debug_text += "❌ Primary conditions not met\n"
+    
+    buy_debug_text += "\n═══════════════════════\n"
+    buy_debug_text += "Candle Data:\n"
+    buy_debug_text += "Open: " + str.tostring(open, "#.##") + "\n"
+    buy_debug_text += "High: " + str.tostring(high, "#.##") + "\n"
+    buy_debug_text += "Low: " + str.tostring(low, "#.##") + "\n"
+    buy_debug_text += "Close: " + str.tostring(close, "#.##") + "\n"
+    
+    // Create label above high
+    label.new(
+         bar_index, 
+         high + (high - low) * 0.5,
+         buy_debug_text,
+         style=label.style_label_down,
+         color=color.new(color.blue, 10),
+         textcolor=color.white,
+         size=size.normal,
+         textalign=text.align_left
+     )
+    
+    // SELL Breakout Analysis
+    var string sell_debug_text = ""
+    sell_debug_text := "🔍 BREAKOUT SELL DEBUG\n"
+    sell_debug_text += "Time: " + str.tostring(debug_time_hour, "00") + ":" + str.tostring(debug_time_minute, "00") + "\n"
+    sell_debug_text += "═══════════════════════\n\n"
+    
+    // Primary Conditions
+    sell_debug_text += "PRIMARY CONDITIONS:\n"
+    sell_debug_text += (debug_strategy_enabled ? "✅" : "❌") + " Strategy Enabled: " + str.tostring(debug_strategy_enabled) + "\n"
+    sell_debug_text += (debug_close_lt_open ? "✅" : "❌") + " Close < Open (Red): " + str.tostring(close, "#.##") + " < " + str.tostring(open, "#.##") + "\n"
+    sell_debug_text += (not debug_entry_blocked ? "✅" : "❌") + " Entry Not Blocked: " + str.tostring(not debug_entry_blocked) + "\n"
+    sell_debug_text += (debug_bias_sell_allowed ? "✅" : "❌") + " Bias Allowed: " + current_nifty_bias + " (" + str.tostring(bias_spread, "#.##") + ")\n"
+    sell_debug_text += (debug_plval_size >= mintest ? "✅" : "❌") + " Pivot Lows Array Size: " + str.tostring(debug_plval_size) + " >= " + str.tostring(mintest) + "\n"
+    sell_debug_text += (debug_close_lt_lwst ? "✅" : "❌") + " Close < LLV[" + str.tostring(prd) + "]: " + str.tostring(close, "#.##") + " < " + str.tostring(lwst_value, "#.##") + "\n"
+    sell_debug_text += (breakout_in_trade ? "❌" : "✅") + " Not In Trade: " + str.tostring(not breakout_in_trade) + "\n"
+    sell_debug_text += (any_strategy_active and enable_overlap_filter ? "❌" : "✅") + " No Overlap: " + str.tostring(not any_strategy_active) + "\n\n"
+    
+    // Detailed Breakout Logic Analysis
+    sell_debug_text += "BREAKOUT LOGIC:\n"
+    
+    if debug_plval_size >= mintest and debug_close_lt_open and debug_strategy_enabled and not debug_entry_blocked and debug_bias_sell_allowed
+        if debug_close_lt_lwst
+            var float debug_bomin = array.get(plval, 0)
+            var int debug_xx_sell = 0
+            var int debug_pivot_loop_count_sell = 0
+            
+            // Simulate the pivot loop
+            for x = 0 to debug_plval_size - 1
+                debug_pivot_loop_count_sell := x
+                if array.get(plval, x) <= close
+                    break
+                debug_xx_sell := x
+                debug_bomin := math.min(debug_bomin, array.get(plval, x))
+            
+            sell_debug_text += "  Pivot Loop Iterations: " + str.tostring(debug_pivot_loop_count_sell + 1) + "\n"
+            sell_debug_text += "  Valid Pivots (xx): " + str.tostring(debug_xx_sell) + "\n"
+            sell_debug_text += "  Breakdown Min Level: " + str.tostring(debug_bomin, "#.##") + "\n"
+            sell_debug_text += (debug_xx_sell >= mintest ? "  ✅" : "  ❌") + " xx >= mintest: " + str.tostring(debug_xx_sell) + " >= " + str.tostring(mintest) + "\n"
+            sell_debug_text += (open >= debug_bomin ? "  ✅" : "  ❌") + " Open >= bomin: " + str.tostring(open, "#.##") + " >= " + str.tostring(debug_bomin, "#.##") + "\n"
+            
+            if debug_xx_sell >= mintest and open >= debug_bomin
+                var int debug_num_sell = 0
+                // Count pivots in zone
+                for x = 0 to debug_xx_sell
+                    if array.get(plval, x) >= debug_bomin and array.get(plval, x) <= debug_bomin + chwidth
+                        debug_num_sell += 1
+                
+                sell_debug_text += "  Zone Width: " + str.tostring(chwidth, "#.##") + " pts\n"
+                sell_debug_text += "  Zone Range: " + str.tostring(debug_bomin, "#.##") + " to " + str.tostring(debug_bomin + chwidth, "#.##") + "\n"
+                sell_debug_text += (debug_num_sell >= mintest ? "  ✅" : "  ❌") + " Pivots in Zone: " + str.tostring(debug_num_sell) + " >= " + str.tostring(mintest) + "\n"
+                sell_debug_text += (lwst_value > debug_bomin ? "  ✅" : "  ❌") + " LLV > bomin: " + str.tostring(lwst_value, "#.##") + " > " + str.tostring(debug_bomin, "#.##") + "\n"
+                
+                if debug_num_sell >= mintest and lwst_value > debug_bomin
+                    var float debug_points_below = debug_bomin - close
+                    sell_debug_text += (debug_points_below >= min_points_below_zone ? "  ✅" : "  ❌") + " Points Below Zone: " + str.tostring(debug_points_below, "#.##") + " >= " + str.tostring(min_points_below_zone, "#.##") + "\n"
+                    sell_debug_text += "\n🎯 RESULT: " + (bearish_breakdown_base ? "✅ SELL SIGNAL GENERATED" : "❌ NO SIGNAL") + "\n"
+                else
+                    sell_debug_text += "\n❌ Zone test failed\n"
+            else
+                sell_debug_text += "\n❌ Pivot validation failed\n"
+        else
+            sell_debug_text += "❌ Close not below LLV\n"
+    else
+        sell_debug_text += "❌ Primary conditions not met\n"
+    
+    sell_debug_text += "\n═══════════════════════\n"
+    sell_debug_text += "Candle Data:\n"
+    sell_debug_text += "Open: " + str.tostring(open, "#.##") + "\n"
+    sell_debug_text += "High: " + str.tostring(high, "#.##") + "\n"
+    sell_debug_text += "Low: " + str.tostring(low, "#.##") + "\n"
+    sell_debug_text += "Close: " + str.tostring(close, "#.##") + "\n"
+    
+    // Create label below low
+    label.new(
+         bar_index, 
+         low - (high - low) * 0.5,
+         sell_debug_text,
+         style=label.style_label_up,
+         color=color.new(color.red, 10),
+         textcolor=color.white,
+         size=size.normal,
+         textalign=text.align_left
+     )
+
+
+
 // ═══════════════════════════════════════════════════════════════════════════════════
-// ENHANCED OVERLAP FILTER LOGIC - NOW WITH 4 STRATEGIES (INCLUDING VWAP)
+// ENHANCED OVERLAP FILTER LOGIC WITH SWING OVERRIDE FEATURE
 // ═══════════════════════════════════════════════════════════════════════════════════
 
-// Update active trade status FIRST
-any_strategy_active := bb_in_trade or breakout_in_trade 
-// Reset overlap tracking at start of each bar
+// Update active trade status
+any_strategy_active := bb_in_trade or breakout_in_trade  
+
+// Reset signal flags each bar
 bb_signal_this_bar := false
 breakout_signal_this_bar := false
 
 
-// Base signal conditions (without overlap filtering) - WITH TIME EXCLUSION
-bb_sell_base = bb_waiting_for_entry and bb_alert_is_above_upper and close < bb_alert_candle_low and enable_bb_strategy and not isEntryBlocked() 
-bb_buy_base = bb_waiting_for_entry and not bb_alert_is_above_upper and close > bb_alert_candle_high and enable_bb_strategy and not isEntryBlocked()
+
+// Base signal conditions (without overlap filtering) - WITH TIME EXCLUSION AND BIAS
+bb_sell_base = bb_waiting_for_entry and bb_alert_is_above_upper and close < bb_alert_candle_low and enable_bb_strategy and not isEntryBlocked() and isBiasAllowedForSell()
+bb_buy_base = bb_waiting_for_entry and not bb_alert_is_above_upper and close > bb_alert_candle_high and enable_bb_strategy and not isEntryBlocked() and isBiasAllowedForBuy()
 
 // Check for potential signals
 bb_has_signal = (bb_sell_base or bb_buy_base) and enable_bb_strategy
 breakout_has_signal = (bullish_breakout_base or bearish_breakdown_base) and enable_breakout_strategy
 
 
-// Count how many strategies want to signal this bar
+
+// Update active status after potential swing override
+any_strategy_active := bb_in_trade or breakout_in_trade 
+
+// Count how many non-swing strategies want to signal this bar
 signals_count = 0
 if bb_has_signal
     signals_count := signals_count + 1
@@ -444,33 +878,33 @@ if breakout_has_signal
     signals_count := signals_count + 1
 
 
-// ENHANCED OVERLAP FILTER CONDITIONS:
-// 1. If overlap filter is disabled, allow all signals
-// 2. If no active trades, allow all signals (normal overlap filter)
-// 3. If ANY strategy has active trade, block ALL new signals
-overlap_filter_blocks_all = enable_overlap_filter and any_strategy_active
-same_bar_overlap = enable_overlap_filter and signals_count > 1 and not any_strategy_active
+// OVERLAP FILTER CONDITIONS - CORRECTED:
+// For non-swing strategies: Blocked by ANY active trade (including swing)
+// For swing strategy: Only blocked by swing being in trade (independent from other strategies)
+overlap_filter_blocks_non_swing = enable_overlap_filter and any_strategy_active
+same_bar_overlap = enable_overlap_filter and signals_count > 1 and not (bb_in_trade or breakout_in_trade )
 
-
-
-// TEST VERSION 20: BB Priority - BB > TBH > Breakout > VWAP
-bb_signal_allowed = not overlap_filter_blocks_all and (not same_bar_overlap or (same_bar_overlap and bb_has_signal))
-breakout_signal_allowed = not overlap_filter_blocks_all and (not same_bar_overlap or (same_bar_overlap and breakout_has_signal and not bb_has_signal))
+// Priority for non-swing strategies: BB > Breakout
+bb_signal_allowed = not overlap_filter_blocks_non_swing and (not same_bar_overlap or (same_bar_overlap and bb_has_signal))
+breakout_signal_allowed = not overlap_filter_blocks_non_swing and (not same_bar_overlap or (same_bar_overlap and breakout_has_signal and not bb_has_signal))
 
 
 
 // Final signal determination
 bullish_breakout = bullish_breakout_base and breakout_signal_allowed
 bearish_breakdown = bearish_breakdown_base and breakout_signal_allowed
-bb_sell_entry = bb_sell_base and bb_signal_allowed
-bb_buy_entry = bb_buy_base and bb_signal_allowed
+bb_sell_signal = bb_sell_base and bb_signal_allowed
+bb_buy_signal = bb_buy_base and bb_signal_allowed
+
 
 
 // Update signal tracking flags
 if bullish_breakout or bearish_breakdown
     breakout_signal_this_bar := true
-if bb_sell_entry or bb_buy_entry
+if bb_sell_signal or bb_buy_signal
     bb_signal_this_bar := true
+
+
 
 
 // ═══════════════════════════════════════════════════════════════════════════════════
@@ -478,10 +912,10 @@ if bb_sell_entry or bb_buy_entry
 // ═══════════════════════════════════════════════════════════════════════════════════
 
 // Generate BB entry signals with IMPROVED SL LOGIC
-if bb_sell_entry and not bb_in_trade
+if bb_sell_signal and not bb_in_trade and barstate.isconfirmed
     bb_in_trade := true
     bb_trade_type := "SELL"
-    bb_entry_price := close
+    bb_entry_price := normal_close
     
     if bb_sl_type == "Smart SL (Min Risk)"
         [sl_level, sl_desc] = calculateSmartSL(bb_entry_price, bb_alert_candle_high, bb_alert_candle_low, false, bb_fixed_sl_points, bb_sl_buffer)
@@ -498,10 +932,10 @@ if bb_sell_entry and not bb_in_trade
     bb_entry_bar_index := bar_index
     bb_waiting_for_entry := false
 
-if bb_buy_entry and not bb_in_trade
+if bb_buy_signal and not bb_in_trade and barstate.isconfirmed
     bb_in_trade := true
     bb_trade_type := "BUY"
-    bb_entry_price := close
+    bb_entry_price := normal_close
     
     if bb_sl_type == "Smart SL (Min Risk)"
         [sl_level, sl_desc] = calculateSmartSL(bb_entry_price, bb_alert_candle_high, bb_alert_candle_low, true, bb_fixed_sl_points, bb_sl_buffer)
@@ -522,10 +956,12 @@ if bb_buy_entry and not bb_in_trade
 if bb_waiting_for_entry and bar_index > bb_alert_bar_index + 5
     bb_waiting_for_entry := false
 
-if bullish_breakout and not breakout_in_trade
+// Breakout Entry Logic
+// Breakout Entry Logic
+if bullish_breakout and not breakout_in_trade and barstate.isconfirmed
     breakout_in_trade := true
     breakout_trade_type := "BUY"
-    breakout_entry_price := normal_close  // Use normal candle for entry
+    breakout_entry_price := normal_close
     breakout_entry_bar_index := bar_index
     
     if breakout_sl_type == "Fixed Points"
@@ -533,12 +969,12 @@ if bullish_breakout and not breakout_in_trade
     else if breakout_sl_type == "ATR Trailing"
         breakout_stop_loss := TS
     else if breakout_sl_type == "Entry Candle Low"
-        breakout_stop_loss := normal_low - entry_candle_buffer  // Use normal candle low
+        breakout_stop_loss := breakout_entry_candle_low - entry_candle_buffer
     
-if bearish_breakdown and not breakout_in_trade
+if bearish_breakdown and not breakout_in_trade and barstate.isconfirmed
     breakout_in_trade := true
     breakout_trade_type := "SELL"
-    breakout_entry_price := normal_close  // Use normal candle for entry
+    breakout_entry_price := normal_close
     breakout_entry_bar_index := bar_index
     
     if breakout_sl_type == "Fixed Points"
@@ -546,7 +982,7 @@ if bearish_breakdown and not breakout_in_trade
     else if breakout_sl_type == "ATR Trailing"
         breakout_stop_loss := TS
     else if breakout_sl_type == "Entry Candle Low"
-        breakout_stop_loss := normal_high + entry_candle_buffer  // Use normal candle high
+        breakout_stop_loss := breakout_entry_candle_high + entry_candle_buffer
 
 // Update ATR trailing SL for breakout
 if breakout_in_trade and breakout_sl_type == "ATR Trailing"
@@ -558,9 +994,8 @@ if breakout_in_trade and breakout_sl_type == "ATR Trailing"
             breakout_stop_loss := TS
 
 
-
 // ═══════════════════════════════════════════════════════════════════════════════════
-// TRADE EXIT MANAGEMENT (BB, BREAKOUT & VWAP)
+// TRADE EXIT MANAGEMENT (BB & BREAKOUT)
 // ═══════════════════════════════════════════════════════════════════════════════════
 
 // BB Trade Management
@@ -571,32 +1006,33 @@ var float bb_trade_points_tp = 0.0
 var float bb_trade_points_sl = 0.0
 
 // 3:15 PM Auto Exit for BB
-if bb_in_trade and isAfter315PM()
+if bb_in_trade and isAfter315PM() 
     bb_315_exit := true
     bb_in_trade := false
     if bb_trade_type == "BUY"
-        bb_trade_points_tp := close - bb_entry_price
+        bb_trade_points_tp := normal_close - bb_entry_price
     else
-        bb_trade_points_tp := bb_entry_price - close
+        bb_trade_points_tp := bb_entry_price - normal_close
 
+// Only check TP/SL on candles AFTER entry candle - Using normal OHLC for calculations
 // Only check TP/SL on candles AFTER entry candle
-if bb_in_trade and bar_index > bb_entry_bar_index and not bb_315_exit
+if bb_in_trade and bar_index > bb_entry_bar_index and barstate.isconfirmed and not bb_315_exit
     if bb_trade_type == "BUY"
-        if low <= bb_stop_loss
+        if normal_low <= bb_stop_loss
             bb_sl_hit := true
             bb_in_trade := false
             bb_trade_points_sl := bb_entry_price - bb_stop_loss
-        else if high >= bb_take_profit
+        else if normal_high >= bb_take_profit
             bb_tp_hit := true
             bb_in_trade := false
             bb_trade_points_tp := bb_take_profit - bb_entry_price
     
     if bb_trade_type == "SELL"
-        if high >= bb_stop_loss
+        if normal_high >= bb_stop_loss
             bb_sl_hit := true
             bb_in_trade := false
             bb_trade_points_sl := bb_stop_loss - bb_entry_price
-        else if low <= bb_take_profit
+        else if normal_low <= bb_take_profit
             bb_tp_hit := true
             bb_in_trade := false
             bb_trade_points_tp := bb_entry_price - bb_take_profit
@@ -605,16 +1041,16 @@ if bb_in_trade and bar_index > bb_entry_bar_index and not bb_315_exit
 if breakout_in_trade and isAfter315PM()
     breakout_315_exit := true
     breakout_in_trade := false
-    breakout_trade_points_tp := breakout_trade_type == "BUY" ? close - breakout_entry_price : breakout_entry_price - close
+    breakout_trade_points_tp := breakout_trade_type == "BUY" ? normal_close - breakout_entry_price : breakout_entry_price - normal_close
 
-// Breakout Trade Exit Logic
-if breakout_in_trade and bar_index > breakout_entry_bar_index and not breakout_315_exit
+// Breakout Trade Exit Logic - Using normal OHLC for calculations
+if breakout_in_trade and bar_index > breakout_entry_bar_index and barstate.isconfirmed and not breakout_315_exit
     
     // Auto TP at 3:15 PM
     if is_auto_tp_time
         breakout_auto_tp_hit_alert := true
         breakout_in_trade := false
-        breakout_trade_points_tp := breakout_trade_type == "BUY" ? close - breakout_entry_price : breakout_entry_price - close
+        breakout_trade_points_tp := breakout_trade_type == "BUY" ? normal_close - breakout_entry_price : breakout_entry_price - normal_close
     
     // Regular Exit Logic
     else if breakout_sl_type == "Fixed Points" or breakout_sl_type == "Entry Candle Low"
@@ -623,46 +1059,51 @@ if breakout_in_trade and bar_index > breakout_entry_bar_index and not breakout_3
                 breakout_sl_hit_alert := true
                 breakout_in_trade := false
                 breakout_trade_points_sl := breakout_entry_price - breakout_stop_loss
-            else if (Buy_ATR or Sell_ATR) and close > breakout_entry_price
+            else if (Buy_ATR or Sell_ATR) and normal_close > breakout_entry_price
                 breakout_tp_hit_alert := true
                 breakout_in_trade := false
-                breakout_trade_points_tp := close - breakout_entry_price
+                breakout_trade_points_tp := normal_close - breakout_entry_price
         else if breakout_trade_type == "SELL"
             if normal_high >= breakout_stop_loss
                 breakout_sl_hit_alert := true
                 breakout_in_trade := false
                 breakout_trade_points_sl := breakout_stop_loss - breakout_entry_price
-            else if (Buy_ATR or Sell_ATR) and close < breakout_entry_price
+            else if (Buy_ATR or Sell_ATR) and normal_close < breakout_entry_price
                 breakout_tp_hit_alert := true
                 breakout_in_trade := false
-                breakout_trade_points_tp := breakout_entry_price - close
+                breakout_trade_points_tp := breakout_entry_price - normal_close
     
     else if breakout_sl_type == "ATR Trailing"
         if breakout_trade_type == "BUY"
             if Buy_ATR or Sell_ATR
-                if close > breakout_entry_price
+                if normal_close > breakout_entry_price
                     breakout_tp_hit_alert := true
                     breakout_in_trade := false
-                    breakout_trade_points_tp := close - breakout_entry_price
+                    breakout_trade_points_tp := normal_close - breakout_entry_price
                 else
                     breakout_sl_hit_alert := true
                     breakout_in_trade := false
-                    breakout_trade_points_sl := breakout_entry_price - close
+                    breakout_trade_points_sl := breakout_entry_price - normal_close
         else if breakout_trade_type == "SELL"
             if Buy_ATR or Sell_ATR
-                if close < breakout_entry_price
+                if normal_close < breakout_entry_price
                     breakout_tp_hit_alert := true
                     breakout_in_trade := false
-                    breakout_trade_points_tp := breakout_entry_price - close
+                    breakout_trade_points_tp := breakout_entry_price - normal_close
                 else
                     breakout_sl_hit_alert := true
                     breakout_in_trade := false
-                    breakout_trade_points_sl := close - breakout_entry_price
+                    breakout_trade_points_sl := normal_close - breakout_entry_price
+
+
+
+
+
 
 
 
 // ═══════════════════════════════════════════════════════════════════════════════════
-// CORRECTED PERFORMANCE TRACKING FOR BB, BREAKOUT, TBH & VWAP
+// CORRECTED PERFORMANCE TRACKING FOR BB, BREAKOUT 
 // ═══════════════════════════════════════════════════════════════════════════════════
 
 // BB Performance Updates
@@ -752,17 +1193,20 @@ if breakout_sl_hit_alert
         max_sl_streak_points := current_sl_streak_points
 
 
+
+
+
 // ═══════════════════════════════════════════════════════════════════════════════════
-// ENHANCED PERFORMANCE TABLE - UPDATED WITH VWAP (4 STRATEGIES)
+// ENHANCED PERFORMANCE TABLE - UPDATED WITH 3 STRATEGIES
 // ═══════════════════════════════════════════════════════════════════════════════════
 
 if barstate.islast and show_performance_table
     current_month = month(time)
     current_year = year(time)
     
-    var performanceTable = table.new(getTablePosition(table_position), 15, 15, bgcolor=color.new(color.black, 20), border_width=1)
+    var performanceTable = table.new(getTablePosition(table_position), 13, 15, bgcolor=color.new(color.black, 20), border_width=1)
     
-    // Header row with 4 strategies - EXPANDED STRUCTURE
+    // Header row with 3 strategies - UPDATED STRUCTURE
     table.cell(performanceTable, 0, 0, 'Month & Year', text_color=color.white, text_size=size.small, bgcolor=color.new(color.blue, 60))
     table.cell(performanceTable, 1, 0, 'TP Trades', text_color=color.white, text_size=size.small, bgcolor=color.new(color.green, 60))
     table.cell(performanceTable, 2, 0, 'SL Trades', text_color=color.white, text_size=size.small, bgcolor=color.new(color.red, 60))
@@ -775,8 +1219,6 @@ if barstate.islast and show_performance_table
     table.cell(performanceTable, 9, 0, 'Max SL Streak', text_color=color.white, text_size=size.small, bgcolor=color.new(color.red, 80))
     table.cell(performanceTable, 10, 0, 'SL Streak Pts', text_color=color.white, text_size=size.small, bgcolor=color.new(color.maroon, 80))
     table.cell(performanceTable, 11, 0, 'BB Trades', text_color=color.white, text_size=size.small, bgcolor=color.new(color.blue, 60))
-    table.cell(performanceTable, 13, 0, 'BRK/ATR', text_color=color.white, text_size=size.small, bgcolor=color.new(color.orange, 60))
-    table.cell(performanceTable, 14, 0, 'VWAP', text_color=color.white, text_size=size.small, bgcolor=color.new(color.purple, 60))
     
     grand_tp_trades = 0
     grand_sl_trades = 0
@@ -799,10 +1241,7 @@ if barstate.islast and show_performance_table
         month_tp_points = 0.0
         month_sl_points = 0.0
         month_bb_trades = 0
-      
-    
         month_breakout_trades = 0
-        
         month_max_sl_streak = 0
         month_sl_streak_points = 0.0
         
@@ -843,16 +1282,16 @@ if barstate.islast and show_performance_table
                     // Count by strategy
                     if strategy == "BB"
                         month_bb_trades := month_bb_trades + 1
+                    
                     else if strategy == "BREAKOUT"
                         month_breakout_trades := month_breakout_trades + 1
-                    
         
         // Calculations
         net_pts = month_tp_points - month_sl_points
         win_rate = calculateWinRate(month_tp_trades, month_sl_trades)
         profit_factor = month_sl_points > 0 ? math.round(month_tp_points / month_sl_points, 2) : (month_tp_points > 0 ? 999.99 : 0.0)
-        option_pts = math.round(net_pts * 0.55)
-        pnl = math.round(option_pts * 100)
+        option_pts = math.round(net_pts * 0.6)
+        pnl = math.round(option_pts * 525)
         
         // Update grand totals
         grand_tp_trades := grand_tp_trades + month_tp_trades
@@ -875,16 +1314,13 @@ if barstate.islast and show_performance_table
         table.cell(performanceTable, 9, row, str.tostring(month_max_sl_streak), text_color=color.white, text_size=size.small)
         table.cell(performanceTable, 10, row, str.tostring(math.round(month_max_sl_streak_points)), text_color=color.white, text_size=size.small)
         table.cell(performanceTable, 11, row, str.tostring(month_bb_trades), text_color=color.white, text_size=size.small)
-        
-        table.cell(performanceTable, 13, row, str.tostring(month_breakout_trades), text_color=color.white, text_size=size.small)
-
     
     // Total row - UPDATED STRUCTURE
     grand_net_pts = grand_tp_points - grand_sl_points
     grand_win_rate = calculateWinRate(grand_tp_trades, grand_sl_trades)
     grand_profit_factor = grand_sl_points > 0 ? math.round(grand_tp_points / grand_sl_points, 2) : (grand_tp_points > 0 ? 999.99 : 0.0)
-    grand_option_pts = math.round(grand_net_pts * 0.55)
-    grand_pnl = math.round(grand_option_pts * 100)
+    grand_option_pts = math.round(grand_net_pts * 0.6)
+    grand_pnl = math.round(grand_option_pts * 525)
     
     table.cell(performanceTable, 0, 13, 'TOTAL', text_color=color.white, text_size=size.small, bgcolor=color.new(color.purple, 60))
     table.cell(performanceTable, 1, 13, str.tostring(grand_tp_trades), text_color=color.white, text_size=size.small, bgcolor=color.new(color.purple, 60))
@@ -898,104 +1334,35 @@ if barstate.islast and show_performance_table
     table.cell(performanceTable, 9, 13, str.tostring(max_sl_streak), text_color=color.white, text_size=size.small, bgcolor=color.new(color.purple, 60))
     table.cell(performanceTable, 10, 13, str.tostring(math.round(max_sl_streak_points)), text_color=color.white, text_size=size.small, bgcolor=color.new(color.purple, 60))
     table.cell(performanceTable, 11, 13, str.tostring(bb_tp_count + bb_sl_count), text_color=color.white, text_size=size.small, bgcolor=color.new(color.purple, 60))
-
-    table.cell(performanceTable, 13, 13, str.tostring((breakout_tp_count + breakout_sl_count)), text_color=color.white, text_size=size.small, bgcolor=color.new(color.purple, 60))
-
     
-    // Strategy Summary Row - UPDATED WITH VWAP
+    // Strategy Summary Row - UPDATED WITH 3 STRATEGIES
     table.cell(performanceTable, 0, 14, 'STRATEGIES', text_color=color.white, text_size=size.small, bgcolor=color.new(color.gray, 60))
     table.cell(performanceTable, 1, 14, 'BB: ' + str.tostring(bb_tp_count) + '/' + str.tostring(bb_sl_count), text_color=color.white, text_size=size.small, bgcolor=color.new(color.blue, 60))
- 
     table.cell(performanceTable, 3, 14, 'BRK: ' + str.tostring(breakout_tp_count) + '/' + str.tostring(breakout_sl_count), text_color=color.white, text_size=size.small, bgcolor=color.new(color.orange, 60))
+    table.cell(performanceTable, 4, 14, 'BIAS: ' + current_nifty_bias, text_color=color.white, text_size=size.small, bgcolor=current_nifty_bias == "BULL" ? color.new(color.green, 60) : current_nifty_bias == "BEAR" ? color.new(color.red, 60) : color.new(color.orange, 60))
     
-    // Enable/Disable Status - UPDATED WITH VWAP
+    // Enable/Disable Status - UPDATED WITH 3 STRATEGIES + BIAS
     bb_status = enable_bb_strategy ? "ON" : "OFF"
-
     breakout_status = enable_breakout_strategy ? "ON" : "OFF"
-  
+    bias_status = enable_bias_confluence ? "ON" : "OFF"
     
     table.cell(performanceTable, 5, 14, bb_status, text_color=color.white, text_size=size.small, bgcolor=enable_bb_strategy ? color.new(color.green, 60) : color.new(color.red, 60))
     table.cell(performanceTable, 7, 14, breakout_status, text_color=color.white, text_size=size.small, bgcolor=enable_breakout_strategy ? color.new(color.green, 60) : color.new(color.red, 60))
+    table.cell(performanceTable, 8, 14, bias_status, text_color=color.white, text_size=size.small, bgcolor=enable_bias_confluence ? color.new(color.green, 60) : color.new(color.red, 60))
     table.cell(performanceTable, 9, 14, user_login, text_color=color.white, text_size=size.small, bgcolor=color.new(color.navy, 60))
     table.cell(performanceTable, 10, 14, 'OVERLAP', text_color=color.white, text_size=size.small, bgcolor=enable_overlap_filter ? color.new(color.green, 60) : color.new(color.red, 60))
-    table.cell(performanceTable, 11, 14, '3:15 EXIT', text_color=color.white, text_size=size.small, bgcolor=enable_315_exit ? color.new(color.green, 60) : color.new(color.red, 60))
-    table.cell(performanceTable, 12, 14, 'PURE-TRAIL', text_color=color.white, text_size=size.small, bgcolor=color.new(color.purple, 60))
-
-// ═══════════════════════════════════════════════════════════════════════════════════
-// ENHANCED STATUS TABLE - UPDATED FOR 4 STRATEGIES INCLUDING VWAP
-// ═══════════════════════════════════════════════════════════════════════════════════
-
-var statusTable = table.new(position.top_right, 2, 18, bgcolor=color.new(color.black, 20), border_width=2)
-if barstate.islast
-    table.cell(statusTable, 0, 0, "Parameter", text_color=color.white, bgcolor=color.new(color.blue, 60))
-    table.cell(statusTable, 1, 0, "Value", text_color=color.white, bgcolor=color.new(color.blue, 60))
-    
-    // Active trades status
-    active_trades = ""
-    if bb_in_trade
-        active_trades := active_trades + "BB:" + bb_trade_type + " "
-    if breakout_in_trade
-        active_trades := active_trades + "BRK:" + breakout_trade_type + " "
-
-    
-    if active_trades == ""
-        active_trades := "NONE"
-    
-    table.cell(statusTable, 0, 1, "Active Trades", text_color=color.white, bgcolor=color.new(color.green, 40))
-    table.cell(statusTable, 1, 1, active_trades, text_color=color.white, bgcolor=color.new(color.green, 40))
-    
-    // Strategy status
-    strategies_enabled = ""
-    if enable_bb_strategy
-        strategies_enabled := strategies_enabled + "BB "
-    if enable_breakout_strategy
-        strategies_enabled := strategies_enabled + "BRK "
+    table.cell(performanceTable, 11, 14, 'AUTO EXIT', text_color=color.white, text_size=size.small, bgcolor=enable_auto_exit ? color.new(color.green, 60) : color.new(color.red, 60))
 
 
-    
-    table.cell(statusTable, 0, 2, "Enabled", text_color=color.white, bgcolor=color.new(color.blue, 40))
-    table.cell(statusTable, 1, 2, strategies_enabled, text_color=color.white, bgcolor=color.new(color.blue, 40))
-    
-    // ENHANCED OVERLAP FILTER STATUS
-    table.cell(statusTable, 0, 3, "Overlap Filter", text_color=color.white, bgcolor=color.new(color.purple, 40))
-    overlap_status = enable_overlap_filter ? "ON" : "OFF"
-    table.cell(statusTable, 1, 3, overlap_status, text_color=color.white, bgcolor=enable_overlap_filter ? color.new(color.green, 40) : color.new(color.red, 40))
-    
-    table.cell(statusTable, 0, 4, "Any Trade Active", text_color=color.white, bgcolor=color.new(color.orange, 40))
-    active_status = any_strategy_active ? "YES" : "NO"
-    active_color = any_strategy_active ? color.new(color.red, 40) : color.new(color.green, 40)
-    table.cell(statusTable, 1, 4, active_status, text_color=color.white, bgcolor=active_color)
-    
-    table.cell(statusTable, 0, 5, "3:15 Exit", text_color=color.white, bgcolor=color.new(color.orange, 40))
-    exit_315_status = enable_315_exit ? "ON" : "OFF"
-    table.cell(statusTable, 1, 5, exit_315_status, text_color=color.white, bgcolor=enable_315_exit ? color.new(color.green, 40) : color.new(color.red, 40))
-    
-    // Signal overlap tracking
-    table.cell(statusTable, 0, 6, "Signals Count", text_color=color.white, bgcolor=color.new(color.yellow, 40))
-    table.cell(statusTable, 1, 6, str.tostring(signals_count), text_color=color.white, bgcolor=signals_count > 1 ? color.new(color.red, 40) : color.new(color.green, 40))
-    
-    // Overlap blocking status
-    table.cell(statusTable, 0, 7, "Overlap Blocks", text_color=color.white, bgcolor=color.new(color.red, 40))
-    blocks_status = overlap_filter_blocks_all ? "YES" : "NO"
-    blocks_color = overlap_filter_blocks_all ? color.new(color.red, 40) : color.new(color.green, 40)
-    table.cell(statusTable, 1, 7, blocks_status, text_color=color.white, bgcolor=blocks_color)
-    
-
-
-// Plot ACTIVE stop loss levels ONLY when there are active trades
-plot(bb_in_trade and enable_bb_strategy ? bb_stop_loss : na, title="BB Stop Loss Level", color=color.red, linewidth=2, style=plot.style_linebr)
-plot(breakout_in_trade and enable_breakout_strategy ? breakout_stop_loss : na, title="Breakout Stop Loss Level", color=color.orange, linewidth=2, style=plot.style_linebr)
 
 
 
 // Plot entry signals for all strategies
-plotshape(bb_sell_entry and show_bb_signals, title='BB Sell Entry', style=shape.labeldown, location=location.abovebar, color=color.red, text='BB\nSELL', textcolor=color.white, size=size.small)
-plotshape(bb_buy_entry and show_bb_signals, title='BB Buy Entry', style=shape.labelup, location=location.belowbar, color=color.green, text='BB\nBUY', textcolor=color.white, size=size.small)
+plotshape(bb_sell_signal and show_bb_signals, title='BB Sell Entry', style=shape.labeldown, location=location.abovebar, color=color.red, text='BB\nSELL', textcolor=color.white, size=size.small)
+plotshape(bb_buy_signal and show_bb_signals, title='BB Buy Entry', style=shape.labelup, location=location.belowbar, color=color.green, text='BB\nBUY', textcolor=color.white, size=size.small)
 
 plotshape(bullish_breakout, style=shape.labelup, color=color.green, location=location.belowbar, text="BREAKOUT\nBUY", size=size.small)
 plotshape(bearish_breakdown, style=shape.labeldown, color=color.red, location=location.abovebar, text="BREAKDOWN\nSELL", size=size.small)
-
-
 
 
 
@@ -1003,8 +1370,12 @@ plotshape(bearish_breakdown, style=shape.labeldown, color=color.red, location=lo
 overlap_detected = enable_overlap_filter and signals_count > 1 and not any_strategy_active
 active_trade_blocks = enable_overlap_filter and any_strategy_active and (bb_has_signal or breakout_has_signal)
 
-plotshape(overlap_detected, title='Same Bar Multiple Signals', style=shape.xcross, location=location.top, color=color.yellow, text='SAME BAR\nOVERLAP', textcolor=color.black, size=size.small)
-plotshape(active_trade_blocks, title='Active Trade Blocks Signal', style=shape.xcross, location=location.bottom, color=color.orange, text='ACTIVE TRADE\nBLOCKS', textcolor=color.white, size=size.small)
+
+
+// BIAS CONFLUENCE WARNING SIGNALS
+bias_blocks_buy = enable_bias_confluence and (bb_buy_base or bullish_breakout_base ) and current_nifty_bias != "BULL"
+bias_blocks_sell = enable_bias_confluence and (bb_sell_base or bearish_breakdown_base) and current_nifty_bias != "BEAR"
+
 
 // Calculate ATR for proper spacing
 atr_value = ta.atr(20) * 2
@@ -1068,12 +1439,6 @@ if breakout_315_exit
               style=label_style, color=color.new(color.orange, 0), textcolor=color.white, size=size.small)
 
 
-    
-    label.new(x=bar_index, y=label_y, text=label_text + str.tostring(math.round(actual_315_points, 1)) + " pts", 
-              style=label_style, color=color.new(color.orange, 0), textcolor=color.white, size=size.small)
-
-
-
 
 
 // Reset flags after processing
@@ -1093,37 +1458,36 @@ if breakout_315_exit
     breakout_315_exit := false
 
 
-// Additional visual plots for clean display
-// Plot Bollinger Bands only when enabled
-plot(show_bb_lines and enable_bb_strategy ? bb_upper : na, title="BB Upper", color=color.blue, linewidth=1)
-plot(show_bb_lines and enable_bb_strategy ? bb_lower : na, title="BB Lower", color=color.blue, linewidth=1)
-plot(show_bb_lines and enable_bb_strategy ? bb_basis : na, title="BB Basis", color=color.gray, linewidth=1)
-
-
 
 // Plot Breakout ATR Trail - Only when active breakout trade or enabled display
 show_breakout_trail = (breakout_in_trade) or enable_breakout_strategy
 plot(show_breakout_trail and enable_breakout_strategy ? TS : na, color=Color, linewidth=3, title='Breakout ATR Trailing Stoploss')
 
+
+
+
+
+
+
 // ═══════════════════════════════════════════════════════════════════════════════════
-// ENHANCED ALERTS SYSTEM - UPDATED FOR 4 STRATEGIES INCLUDING VWAP
+// ENHANCED ALERTS SYSTEM - UPDATED FOR 3 STRATEGIES INCLUDING BIAS
 // ═══════════════════════════════════════════════════════════════════════════════════
 
-// BB Alerts (unchanged)
+// BB Alerts (updated with bias)
 if bb_enable_alerts and enable_bb_strategy
     if alert_above_upper
-        alert("BB ALERT ABOVE UPPER BAND: Waiting for reversal SELL entry below " + str.tostring(bb_alert_candle_low, "#.##") + " | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
+        alert("BB ALERT ABOVE UPPER BAND: Waiting for reversal SELL entry below " + str.tostring(bb_alert_candle_low, "#.##") + " | BIAS: " + current_nifty_bias + " | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
     
     if alert_below_lower
-        alert("BB ALERT BELOW LOWER BAND: Waiting for reversal BUY entry above " + str.tostring(bb_alert_candle_high, "#.##") + " | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
+        alert("BB ALERT BELOW LOWER BAND: Waiting for reversal BUY entry above " + str.tostring(bb_alert_candle_high, "#.##") + " | BIAS: " + current_nifty_bias + " | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
     
-    if bb_sell_entry
+    if bb_sell_signal
         risk_points = bb_entry_price - bb_stop_loss
-        alert("BB SELL ENTRY: " + str.tostring(close, "#.##") + " | SL: " + str.tostring(bb_stop_loss, "#.##") + " | Risk: " + str.tostring(math.round(risk_points, 1)) + "pts | Method: " + bb_sl_method + " | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
+        alert("BB SELL ENTRY: " + str.tostring(close, "#.##") + " | SL: " + str.tostring(bb_stop_loss, "#.##") + " | Risk: " + str.tostring(math.round(risk_points, 1)) + "pts | Method: " + bb_sl_method + " | BIAS: " + current_nifty_bias + " | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
     
-    if bb_buy_entry
+    if bb_buy_signal
         risk_points = bb_stop_loss - bb_entry_price
-        alert("BB BUY ENTRY: " + str.tostring(close, "#.##") + " | SL: " + str.tostring(bb_stop_loss, "#.##") + " | Risk: " + str.tostring(math.round(risk_points, 1)) + "pts | Method: " + bb_sl_method + " | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
+        alert("BB BUY ENTRY: " + str.tostring(close, "#.##") + " | SL: " + str.tostring(bb_stop_loss, "#.##") + " | Risk: " + str.tostring(math.round(risk_points, 1)) + "pts | Method: " + bb_sl_method + " | BIAS: " + current_nifty_bias + " | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
     
     if bb_tp_hit
         alert("BB TAKE PROFIT HIT: +" + str.tostring(math.abs(bb_trade_points_tp), "#.##") + " points profit | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
@@ -1135,13 +1499,13 @@ if bb_enable_alerts and enable_bb_strategy
         result_msg = bb_trade_points_tp > 0 ? "profit" : "loss"
         alert("BB 3:15 PM AUTO EXIT: " + str.tostring(math.abs(bb_trade_points_tp), "#.##") + " points " + result_msg + " | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
 
-// Breakout Alerts (unchanged)
+// Breakout Alerts (updated with bias)
 if breakout_enable_alerts and enable_breakout_strategy
     if bullish_breakout
-        alert("BREAKOUT BUY SIGNAL: Position opened at " + str.tostring(close, "#.##") + " | SL: " + str.tostring(breakout_stop_loss, "#.##") + " | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
+        alert("BREAKOUT BUY SIGNAL: Position opened at " + str.tostring(close, "#.##") + " | SL: " + str.tostring(breakout_stop_loss, "#.##") + " | BIAS: " + current_nifty_bias + " | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
     
     if bearish_breakdown
-        alert("BREAKOUT SELL SIGNAL: Position opened at " + str.tostring(close, "#.##") + " | SL: " + str.tostring(breakout_stop_loss, "#.##") + " | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
+        alert("BREAKOUT SELL SIGNAL: Position opened at " + str.tostring(close, "#.##") + " | SL: " + str.tostring(breakout_stop_loss, "#.##") + " | BIAS: " + current_nifty_bias + " | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
     
     if breakout_tp_hit_alert or breakout_auto_tp_hit_alert
         alert("BREAKOUT TAKE PROFIT: Position closed with profit at " + str.tostring(close, "#.##") + " | Points: +" + str.tostring(math.abs(breakout_trade_points_tp), "#.##") + " | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
@@ -1154,16 +1518,13 @@ if breakout_enable_alerts and enable_breakout_strategy
         alert("BREAKOUT 3:15 PM AUTO EXIT: " + str.tostring(math.abs(breakout_trade_points_tp), "#.##") + " points " + result_msg + " | Time: " + getCurrentTimestamp(), alert.freq_once_per_bar)
 
 
-   
 
 
 
 
-// Alert Conditions for all 4 strategies
-alertcondition(alert_above_upper and enable_bb_strategy, 'BB Alert Above Upper Band', 'BB Alert Candle Above Upper Band')
-alertcondition(alert_below_lower and enable_bb_strategy, 'BB Alert Below Lower Band', 'BB Alert Candle Below Lower Band')
-alertcondition(bb_sell_entry, 'BB Sell Entry Signal', 'BB Reversal SELL Entry')
-alertcondition(bb_buy_entry, 'BB Buy Entry Signal', 'BB Reversal BUY Entry')
+// Alert Conditions for all 3 strategies
+alertcondition(bb_sell_signal, 'BB Sell Entry Signal', 'BB Reversal SELL Entry')
+alertcondition(bb_buy_signal, 'BB Buy Entry Signal', 'BB Reversal BUY Entry')
 alertcondition(bb_tp_hit, 'BB Take Profit Hit', 'BB Take Profit Hit')
 alertcondition(bb_sl_hit, 'BB Stop Loss Hit', 'BB Stop Loss Hit')
 
@@ -1173,19 +1534,16 @@ alertcondition(breakout_tp_hit_alert or breakout_auto_tp_hit_alert, 'Breakout Ta
 alertcondition(breakout_sl_hit_alert, 'Breakout Stop Loss', 'Breakout Stop Loss Hit')
 
 
-alertcondition(overlap_detected, 'Same Bar Overlap Filter', 'Multiple Strategy Signals Same Bar')
-alertcondition(active_trade_blocks, 'Active Trade Blocks Signal', 'New Signal Blocked by Active Trade')
-alertcondition(isEntryBlocked() and (bb_has_signal or breakout_has_signal), 'Entry Blocked After 3:15 PM', 'New Entry Attempted After 3:15 PM')
-
-// Background highlighting for various conditions
-bgcolor(alert_above_upper and enable_bb_strategy ? color.new(color.orange, 90) : na, title="BB Alert Above Upper")
-bgcolor(alert_below_lower and enable_bb_strategy ? color.new(color.purple, 90) : na, title="BB Alert Below Lower")
-bgcolor(overlap_detected ? color.new(color.yellow, 85) : na, title="Same Bar Overlap")
-bgcolor(active_trade_blocks ? color.new(color.orange, 85) : na, title="Active Trade Blocks Signal")
-bgcolor(isEntryBlocked() ? color.new(color.gray, 90) : na, title="Entries Blocked After 3:15 PM")
 
 
 
 
 
 
+
+
+// Color candles based on active trades - Updated with 3 strategies
+barcolor(bb_in_trade and enable_bb_strategy and bb_trade_type == "BUY" ? color.new(color.green, 70) : 
+         bb_in_trade and enable_bb_strategy and bb_trade_type == "SELL" ? color.new(color.red, 70) : 
+         breakout_in_trade and enable_breakout_strategy and breakout_trade_type == "BUY" ? color.new(color.blue, 70) :
+         breakout_in_trade and enable_breakout_strategy and breakout_trade_type == "SELL" ? color.new(color.orange, 70) : na)
