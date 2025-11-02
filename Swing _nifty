@@ -64,7 +64,7 @@ block_entries_after_exit = input.bool(true, title="Block New Entries After Exit 
 // SWING STRATEGY AUTO EXIT SETTINGS - SEPARATE FROM MAIN AUTO EXIT
 swing_enable_auto_exit = input.bool(false, title="✅ Enable Swing Auto Exit", tooltip="Separate auto exit for swing strategy only", group="Swing Auto Exit Settings")
 swing_auto_exit_hour = input.int(15, title="Swing Auto Exit Hour (24h format)", minval=9, maxval=23, group="Swing Auto Exit Settings")
-swing_auto_exit_minute = input.int(15, title="Swing Auto Exit Minute", minval=0, maxval=59, step=15, group="Swing Auto Exit Settings")
+swing_auto_exit_minute = input.int(5, title="Swing Auto Exit Minute", minval=0, maxval=59, step=15, group="Swing Auto Exit Settings")
 swing_block_entries_after_exit = input.bool(true, title="Block Swing Entries After Exit Time", group="Swing Auto Exit Settings")
 
 swing_start_time = input.string("09:15", title="Swing Strategy Start Time", options=["09:15", "09:30", "09:45", "10:00", "09:20", "10:30", "10:45", "11:00"], group="Strategy Start Times")
@@ -85,9 +85,9 @@ tbh_bias_bear_threshold = input.float(-8.0, "TBH BEAR Bias Threshold", maxval=-1
 // ═════════════════════════════════════════════════════════════════
 
 swing_bias_update_frequency = input.int(5, "Swing Bias Update Frequency (minutes)", minval=1, maxval=15, tooltip="Time between Swing bias analysis sessions", group="Swing Bias Settings")
-swing_bias_change_threshold = input.float(0.05, "Swing Bias Threshold %", minval=0.01, step=0.01, tooltip="Minimum % change to classify as gainer/loser for Swing", group="Swing Bias Settings")
-swing_bias_bull_threshold = input.float(8.0, "Swing BULL Bias Threshold", minval=1.0, maxval=50.0, step=0.5, tooltip="Spread above this value = BULL bias for Swing", group="Swing Bias Settings")
-swing_bias_bear_threshold = input.float(-8.0, "Swing BEAR Bias Threshold", maxval=-1.0, minval=-50.0, step=0.5, tooltip="Spread below this value = BEAR bias for Swing", group="Swing Bias Settings")
+swing_bias_change_threshold = input.float(0.3, "Swing Bias Threshold %", minval=0.01, step=0.01, tooltip="Minimum % change to classify as gainer/loser for Swing", group="Swing Bias Settings")
+swing_bias_bull_threshold = input.float(7, "Swing BULL Bias Threshold", minval=1.0, maxval=50.0, step=0.5, tooltip="Spread above this value = BULL bias for Swing", group="Swing Bias Settings")
+swing_bias_bear_threshold = input.float(-4.5, "Swing BEAR Bias Threshold", maxval=-1.0, minval=-50.0, step=0.5, tooltip="Spread below this value = BEAR bias for Swing", group="Swing Bias Settings")
 
 
 // ═════════════════════════════════════════════════════════════════
@@ -352,15 +352,15 @@ tbh_enable_alerts = input.bool(true, title="Enable TBH Alerts", group="Top Botto
 swing_res = input.timeframe(title="Swing Resolution", defval="", group="Swing Strategy")
 swing_colorBars = input.bool(title="Color bars", defval=false, group="Swing Strategy")
 swing_show_label_signals = input.bool(false, title="Show Label signals", group="Swing Strategy")
-swing_percentSqueeze = input.float(0.2, step=0.1, title="Percent Squeeze", group="Swing Strategy")
+swing_percentSqueeze = input.float(0.006, step=0.1, title="Percent Squeeze", group="Swing Strategy")
 
 
 // NEW: Toggle for Squeeze and Normal Signal Types
 swing_show_lime_red_signals = input.bool(true, title="Show Buy/Sell on Lime/Red (Normal) Bars", group="Swing Strategy")
 
 // Tilson T3 Inputs
-swing_T3Factor = input.float(defval=0.3, minval=0, maxval=100, step=0.1, title="Swing T3 Factor", group="Swing Strategy")
-swing_T3Length = input.int(defval=7, minval=1, title="Swing T3 Length", group="Swing Strategy")
+swing_T3Factor = input.float(defval=0.32, minval=0, maxval=100, step=0.1, title="Swing T3 Factor", group="Swing Strategy")
+swing_T3Length = input.int(defval=4, minval=1, title="Swing T3 Length", group="Swing Strategy")
 
 // Strategy Options
 swing_use_star_based_exit = input.bool(true, title="Use Star-Based Exit (vs Fixed SL/TP)", group="Swing Strategy")
@@ -372,18 +372,18 @@ swing_volume_multiplier = input.float(1.0,step=0.1, title="Volume Multiplier", g
 
 
 swing_enable_atr_trail_exit = input.bool(true, title="Enable ATR Trailing Stop Exit", group="Swing Strategy")
-swing_atr_trail_period = input.int(5, title="ATR Trail Period", group="Swing Strategy")
+swing_atr_trail_period = input.int(4, title="ATR Trail Period", group="Swing Strategy")
 swing_atr_trail_hhv = input.int(10, title="ATR Trail HHV Period", group="Swing Strategy")
-swing_atr_trail_mult = input.float(2.5, step=0.1,title="ATR Trail Multiplier", group="Swing Strategy")
+swing_atr_trail_mult = input.float(0.2, step=0.1,title="ATR Trail Multiplier", group="Swing Strategy")
 
 swing_enable_alerts = input.bool(true, title="Enable Swing Alerts", group="Swing Strategy")
 
 // HTF SUPERTREND CONFLUENCE SETTINGS
 swing_enable_htf_confluence = input.bool(false, title="✅ Enable HTF Supertrend Confluence", tooltip="Requires HTF supertrend alignment for swing signals", group="Swing Strategy")
 swing_htf_mode = input.string("Auto", title="HTF Method", options=["Auto", "User Defined"], group="Swing Strategy")
-swing_htf_custom = input.timeframe("5", title="Custom HTF (if User Defined selected)", group="Swing Strategy")
-swing_htf_atr_period = input.int(7, title="HTF Supertrend ATR Period", minval=1, maxval=100, group="Swing Strategy")
-swing_htf_atr_mult = input.float(2.0, title="HTF Supertrend ATR Multiplier", minval=0.5, maxval=100, step=0.1, group="Swing Strategy")
+swing_htf_custom = input.timeframe("6", title="Custom HTF (if User Defined selected)", group="Swing Strategy")
+swing_htf_atr_period = input.int(3, title="HTF Supertrend ATR Period", minval=1, maxval=100, group="Swing Strategy")
+swing_htf_atr_mult = input.float(1.6, title="HTF Supertrend ATR Multiplier", minval=0.5, maxval=100, step=0.1, group="Swing Strategy")
 
 // ═══════════════════════════════════════════════════════════════════════════════════
 // GLOBAL DISPLAY SETTINGS
