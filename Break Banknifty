@@ -57,13 +57,15 @@ block_entries_after_exit = input.bool(true, title="Block New Entries After Exit 
 // NIFTY BIAS CONFLUENCE CALCULATION - TOP 20 STOCKS
 // ═══════════════════════════════════════════════════════════════════════════════════
 
+
 // Bias calculation parameters
-bias_update_frequency = input.int(5, "Bias Update Frequency (minutes)", minval=1, maxval=15, tooltip="Time between bias analysis sessions", group="Bias Confluence")
-bias_change_threshold = input.float(0.05, "Bias Threshold %", minval=0.01, step=0.01, tooltip="Minimum % change to classify as gainer/loser", group="Bias Confluence")
+bias_update_frequency = input.int(9, "Bias Update Frequency (minutes)", minval=1, maxval=15, tooltip="Time between bias analysis sessions", group="Bias Confluence")
+bias_change_threshold = input.float(0.11, "Bias Threshold %", minval=0.01, step=0.01, tooltip="Minimum % change to classify as gainer/loser", group="Bias Confluence")
 
 // Configurable bias thresholds
-bias_bull_threshold = input.float(8.0, "BULL Bias Threshold", minval=1.0, maxval=50.0, step=0.5, tooltip="Spread above this value = BULL bias", group="Bias Confluence")
-bias_bear_threshold = input.float(-8.0, "BEAR Bias Threshold", maxval=-1.0, minval=-50.0, step=0.5, tooltip="Spread below this value = BEAR bias", group="Bias Confluence")
+bias_bull_threshold = input.float(2.5, "BULL Bias Threshold", minval=1.0, maxval=50.0, step=0.5, tooltip="Spread above this value = BULL bias", group="Bias Confluence")
+bias_bear_threshold = input.float(-2, "BEAR Bias Threshold", maxval=-1.0, minval=-50.0, step=0.5, tooltip="Spread below this value = BEAR bias", group="Bias Confluence")
+
 
 
 // Top 16 Nifty stocks with OFFICIAL WEIGHTAGES (Total: ~66% coverage)
@@ -223,21 +225,21 @@ show_bb_tp_sl_labels = input.bool(true, title="Show BB TP/SL Hit Labels", group=
 // BREAKOUT STRATEGY INPUTS
 // ═══════════════════════════════════════════════════════════════════════════════════
 
-prd = input.int(7, title="Pivot Period", minval=1, group="Breakout Strategy")
-bo_len = input.int(200, title="Max Breakout Length", minval=0, maxval=3000, group="Breakout Strategy")
-cwidthu = input.float(6.0, title="Threshold Rate %", minval=1.0, maxval=100.0, group="Breakout Strategy") / 100
+prd = input.int(2, title="Pivot Period", minval=1, group="Breakout Strategy")
+bo_len = input.int(220, title="Max Breakout Length", minval=0, maxval=3000, group="Breakout Strategy")
+cwidthu = input.float(15, title="Threshold Rate %", minval=1.0, maxval=100.0, group="Breakout Strategy") / 100
 mintest = input.int(2, title="Minimum Number of Tests", minval=1, group="Breakout Strategy")
-min_points_above_zone = input.float(2.5, title="Min Points Above Zone for BUY", minval=0.5, maxval=20.0, step=0.5, group="Breakout Strategy")
-min_points_below_zone = input.float(2.5, title="Min Points Below Zone for SELL", minval=0.5, maxval=20.0, step=0.5, group="Breakout Strategy")
+min_points_above_zone = input.float(7.5, title="Min Points Above Zone for BUY", minval=0.5, maxval=20.0, step=0.5, group="Breakout Strategy")
+min_points_below_zone = input.float(1, title="Min Points Below Zone for SELL", minval=0.5, maxval=20.0, step=0.5, group="Breakout Strategy")
 
-Atr = input.int(defval=5, title='ATR Period', minval=1, maxval=500, group="Breakout Strategy")
-Hhv = input.int(defval=10, title='HHV Period', minval=1, maxval=500, group="Breakout Strategy")
-Mult = input.float(defval=2.5, step=0.1, title='ATR Multiplier', minval=0.1, group="Breakout Strategy")
+Atr = input.int(defval=1, title='ATR Period', minval=1, maxval=500, group="Breakout Strategy")
+Hhv = input.int(defval=4, title='HHV Period', minval=1, maxval=500, group="Breakout Strategy")
+Mult = input.float(defval=1.7, step=0.1, title='ATR Multiplier', minval=0.1, group="Breakout Strategy")
 
 // STOP LOSS SETTINGS
 breakout_sl_type = input.string("Entry Candle Low", title="Stop Loss Type", options=["Fixed Points", "ATR Trailing", "Entry Candle Low"], group="Breakout Strategy")
 breakout_fixed_sl_points = input.float(31.0, title="Fixed SL Points", group="Breakout Strategy")
-entry_candle_buffer = input.float(5.0, title="Entry Candle SL Buffer (Points)", minval=-100, maxval=50.0, group="Breakout Strategy")
+entry_candle_buffer = input.float(0, title="Entry Candle SL Buffer (Points)", minval=-100, maxval=50.0, group="Breakout Strategy")
 auto_tp_time = input.bool(true, title="Auto TP at 3:15 PM", group="Breakout Strategy")
 
 breakout_enable_alerts = input.bool(true, title="Enable Breakout Alerts", group="Breakout Strategy")
@@ -443,64 +445,6 @@ var float max_sl_streak_points = 0.0
 var bool any_strategy_active = false
 var bool bb_signal_this_bar = false
 var bool breakout_signal_this_bar = false
-
-
-// Add after line 610 (after all var declarations)
-
-// VARIABLE RESET LOGIC
-if reset_all_variables
-    // Reset breakout trade state
-    breakout_in_trade := false
-    breakout_trade_type := ""
-    breakout_entry_price := na
-    breakout_stop_loss := na
-    breakout_entry_bar_index := na
-    breakout_tp_hit_alert := false
-    breakout_sl_hit_alert := false
-    breakout_auto_tp_hit_alert := false
-    breakout_315_exit := false
-    breakout_trade_points_tp := 0.0
-    breakout_trade_points_sl := 0.0
-    
-    // Reset BB trade state
-    bb_in_trade := false
-    bb_trade_type := ""
-    bb_entry_price := na
-    bb_stop_loss := na
-    bb_take_profit := na
-    bb_entry_bar_index := na
-    bb_sl_method := ""
-    bb_waiting_for_entry := false
-    bb_alert_is_above_upper := false
-    bb_alert_bar_index := na
-    bb_alert_candle_high := na
-    bb_alert_candle_low := na
-    
-    // Clear performance tracking arrays
-    array.clear(combined_trade_months)
-    array.clear(combined_trade_years)
-    array.clear(combined_trade_was_tp)
-    array.clear(combined_trade_points)
-    array.clear(combined_trade_strategy)
-    
-    // Reset counters
-    combined_total_tp_count := 0
-    combined_total_sl_count := 0
-    combined_total_tp_points := 0.0
-    combined_total_sl_points := 0.0
-    bb_tp_count := 0
-    bb_sl_count := 0
-    breakout_tp_count := 0
-    breakout_sl_count := 0
-    current_sl_streak := 0
-    max_sl_streak := 0
-    current_sl_streak_points := 0.0
-    max_sl_streak_points := 0.0
-    
-    // Reset overlap filter
-    any_strategy_active := false
-    bb_signal_this_bar := false
-    breakout_signal_this_bar := false
 
 
 
