@@ -193,36 +193,6 @@ getBiasCoverageInfo() => "Top16: " + str.tostring(math.round(bias_gainers_weight
 
 
 
-// ADD THIS AFTER LINE 47 (after enable_bias_confluence input):
-enable_cpr_distance_filter = input.bool(false, title="✅ Enable CPR Distance Filter", tooltip="Filters trades based on distance between TC and BC", group="Strategy Toggles")
-cpr_distance_range_min = input.int(1, title="Min CPR Distance (Points)", minval=1, maxval=100, group="Strategy Toggles")
-cpr_distance_range_max = input.int(100, title="Max CPR Distance (Points)", minval=1, maxval=100, group="Strategy Toggles")
-
-
-
-// ADD THIS AFTER LINE 115 (before bias stock security requests):
-// ═════════════════════════════════════════════════════════════════
-// CPR DATA FOR CONFLUENCE FILTER
-// ═════════════════════════════════════════════════════════════════
-
-// Fetch CPR levels for distance calculation
-cpr_prev_high = request.security(syminfo.tickerid, "D", high[1], lookahead=barmerge.lookahead_on)
-cpr_prev_low = request.security(syminfo.tickerid, "D", low[1], lookahead=barmerge.lookahead_on)
-cpr_prev_close = request.security(syminfo.tickerid, "D", close[1], lookahead=barmerge.lookahead_on)
-cpr_pivot = (cpr_prev_high + cpr_prev_low + cpr_prev_close) / 3
-cpr_bc = (cpr_prev_high + cpr_prev_low) / 2
-cpr_tc = 2 * cpr_pivot - cpr_bc
-cpr_distance = math.abs(cpr_tc - cpr_bc)
-
-
-// ADD THIS AFTER LINE 230 (after getBiasCoverageInfo() function):
-isCPRDistanceValid() =>
-    if not enable_cpr_distance_filter
-        true
-    else
-        cpr_distance >= cpr_distance_range_min and cpr_distance <= cpr_distance_range_max
-
-
 // ═══════════════════════════════════════════════════════════════════════════════════
 // BOLLINGER BAND REVERSAL STRATEGY INPUTS - IMPROVED SL LOGIC
 // ═══════════════════════════════════════════════════════════════════════════════════
@@ -626,7 +596,7 @@ var float breakout_entry_candle_low = na
 
 hgst_value = ta.highest(prd)[1]
 
-if array.size(phval) >= mintest and close > open and enable_breakout_strategy and not isEntryBlocked() and isBiasAllowedForBuy() and isCPRDistanceValid() enable_breakout_strategy and not isEntryBlocked() and isBiasAllowedForBuy()  
+if array.size(phval) >= mintest and close > open and enable_breakout_strategy and not isEntryBlocked() and isBiasAllowedForBuy()  
     if close > hgst_value
         bomax = array.get(phval, 0)
         xx = 0
@@ -651,7 +621,7 @@ var float breakout_entry_candle_high = na
 
 lwst_value = ta.lowest(prd)[1]
 
-if array.size(plval) >= mintest and close < open and enable_breakout_strategy and not isEntryBlocked() and isBiasAllowedForSell() and isCPRDistanceValid()
+if array.size(plval) >= mintest and close < open and enable_breakout_strategy and not isEntryBlocked() and isBiasAllowedForSell()
     if close < lwst_value
         bomin = array.get(plval, 0)
         xx = 0
@@ -1467,9 +1437,6 @@ active_trade_blocks = enable_overlap_filter and any_strategy_active and (bb_has_
 // BIAS CONFLUENCE WARNING SIGNALS
 bias_blocks_buy = enable_bias_confluence and (bb_buy_base or bullish_breakout_base ) and current_nifty_bias != "BULL"
 bias_blocks_sell = enable_bias_confluence and (bb_sell_base or bearish_breakdown_base) and current_nifty_bias != "BEAR"
-
-
-
 
 
 // Calculate ATR for proper spacing
